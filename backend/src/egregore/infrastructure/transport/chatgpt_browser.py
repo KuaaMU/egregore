@@ -120,6 +120,9 @@ class ChatGPTConnector:
 
         page = self._page
 
+        # Record current response BEFORE sending (to detect new response)
+        old_response = await self._extract_latest_response(page)
+
         # Find and fill input
         input_el = page.get_by_role("textbox").first
         await input_el.wait_for(state="visible", timeout=10000)
@@ -130,8 +133,8 @@ class ChatGPTConnector:
         # Send
         await input_el.press("Enter")
 
-        # Wait for response
-        response_text = await self._wait_for_response(page, timeout_ms)
+        # Wait for NEW response (different from old one)
+        response_text = await self._wait_for_response(page, timeout_ms, old_response)
 
         logger.info("response_received", length=len(response_text))
         return response_text
@@ -162,18 +165,37 @@ class ChatGPTConnector:
     def is_ready(self) -> bool:
         return self._page is not None and not self._page.is_closed()
 
-    async def _wait_for_response(self, page: Page, timeout_ms: int) -> str:
-        """Wait for response to complete and extract text."""
+    async def _wait_for_response(self, page: Page, timeout_ms: int, old_response: str = "") -> str:
+        """Wait for a NEW response (different from old_response) to stabilize.
+
+        Strategy:
+        1. Wait for response text to CHANGE from old_response
+        2. Then wait for it to STABILIZE (no more changes)
+        3. Return the stable text
+        """
         start = time.monotonic()
-        last_text = ""
+        last_text = old_response
         stable_count = 0
-        stable_threshold = 4
+        stable_threshold = 4  # 4 polls with no change = done (2s)
+        new_response_detected = False
 
         await asyncio.sleep(1.0)
 
         while (time.monotonic() - start) * 1000 < timeout_ms:
             current_text = await self._extract_latest_response(page)
 
+            # Phase 1: Wait for response to CHANGE from old
+            if not new_response_detected:
+                if current_text and current_text != old_response:
+                    new_response_detected = True
+                    last_text = current_text
+                    stable_count = 0
+                else:
+                    # Still waiting for new response to appear
+                    await asyncio.sleep(0.5)
+                    continue
+
+            # Phase 2: Wait for response to STABILIZE
             if current_text and current_text != last_text:
                 last_text = current_text
                 stable_count = 0
