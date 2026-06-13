@@ -26,7 +26,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from egregore.infrastructure.transport.chatgpt_browser import ChatGPTAdapter
+from egregore.infrastructure.transport.chatgpt_browser import ChatGPTConnector
 
 TEST_PROMPTS = [
     "What is 2+2?",
@@ -80,19 +80,19 @@ def percentile(data: list[float], p: float) -> float:
     return sorted_data[f] + (k - f) * (sorted_data[c] - sorted_data[f])
 
 
-async def save_failure_artifacts(adapter: ChatGPTAdapter, index: int, error: str):
+async def save_failure_artifacts(connector: ChatGPTConnector, index: int, error: str):
     """Save screenshot and HTML on failure."""
     try:
-        if adapter._page and not adapter._page.is_closed():
+        if connector._page and not connector._page.is_closed():
             # Screenshot
             SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
             ss_path = SCREENSHOTS_DIR / f"failure_{index:04d}.png"
-            await adapter._page.screenshot(path=str(ss_path))
+            await connector._page.screenshot(path=str(ss_path))
 
             # HTML
             HTML_DIR.mkdir(parents=True, exist_ok=True)
             html_path = HTML_DIR / f"failure_{index:04d}.html"
-            html = await adapter._page.content()
+            html = await connector._page.content()
             html_path.write_text(html, encoding="utf-8")
 
             return str(ss_path), str(html_path)
@@ -110,8 +110,8 @@ async def run_reliability_test(
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     results_file = RESULTS_DIR / f"reliability_{ts}.json"
 
-    adapter = ChatGPTAdapter(headless=True)
-    await adapter.launch()
+    adapter = ChatGPTConnector()
+    await adapter.connect()
 
     results = []
     latencies: list[float] = []
@@ -155,7 +155,7 @@ async def run_reliability_test(
                 await adapter.close()
                 await asyncio.sleep(5)
                 try:
-                    await adapter.launch()
+                    await adapter.connect()
                 except Exception as e:
                     print(f"  [{total}] RECOVERY FAILED: {e}")
                 continue

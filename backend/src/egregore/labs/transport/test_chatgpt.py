@@ -1,66 +1,48 @@
-"""Test ChatGPT Browser Adapter — manual verification.
-
-Run this to verify the adapter works with real ChatGPT.
+"""Test ChatGPT via Chrome CDP Connector.
 
 Usage:
-    uv run python -m egregore.labs.transport.test_chatgpt
-
-This will:
-1. Launch Chromium with persistent context
-2. Navigate to ChatGPT
-3. Send a test prompt
-4. Print the response
-5. Check health
-6. Close
-
-First run will need manual login (non-headless).
-Subsequent runs reuse the saved session.
+    1. Start Chrome with: chrome.exe --remote-debugging-port=9222
+    2. Login to ChatGPT in that Chrome
+    3. Run: uv run python -m egregore.labs.transport.test_chatgpt
 """
 
 import asyncio
 import sys
 
-from egregore.infrastructure.transport.chatgpt_browser import ChatGPTAdapter
+from egregore.infrastructure.transport.chatgpt_browser import ChatGPTConnector
 
 
 async def main():
-    # Default headless. Use --no-headless to see the browser.
-    headless = "--no-headless" not in sys.argv
-
-    print(f"Launching ChatGPT adapter (headless={headless})...")
-    adapter = ChatGPTAdapter(headless=headless)
+    print("Connecting to Chrome via CDP...")
+    connector = ChatGPTConnector()
 
     try:
-        await adapter.launch()
-        print("[OK] Launched")
+        await connector.connect()
+        print("[OK] Connected")
 
-        # Health check
-        healthy = await adapter.health_check()
+        healthy = await connector.health_check()
         print(f"[OK] Health: {'OK' if healthy else 'FAILED'}")
 
         if not healthy:
-            print("[WARN] ChatGPT not ready. You may need to login manually.")
-            print("  Run without --headless to login interactively.")
+            print("[WARN] ChatGPT not ready. Is the page loaded in Chrome?")
             return
 
-        # Send test prompt
+        # Test 1
         prompt = "What is 2+2? Answer in one sentence."
         print(f"\nSending: {prompt}")
-        print("Waiting for response...")
-
-        response = await adapter.send(prompt, timeout_ms=30000)
-        print(f"\nResponse ({len(response)} chars):")
+        response = await connector.send(prompt, timeout_ms=30000)
+        print(f"Response ({len(response)} chars):")
         print("-" * 40)
-        print(response)
+        print(response[:500])
         print("-" * 40)
 
-        # Second test
+        # Test 2
         prompt2 = "What is the capital of France?"
         print(f"\nSending: {prompt2}")
-        response2 = await adapter.send(prompt2, timeout_ms=30000)
-        print(f"\nResponse ({len(response2)} chars):")
+        response2 = await connector.send(prompt2, timeout_ms=30000)
+        print(f"Response ({len(response2)} chars):")
         print("-" * 40)
-        print(response2)
+        print(response2[:500])
         print("-" * 40)
 
         print("\n[OK] All tests passed")
@@ -69,8 +51,8 @@ async def main():
         print(f"\n[ERROR] {e}")
 
     finally:
-        await adapter.close()
-        print("[OK] Closed")
+        await connector.close()
+        print("[OK] Disconnected")
 
 
 if __name__ == "__main__":

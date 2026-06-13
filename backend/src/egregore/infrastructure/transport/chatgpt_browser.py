@@ -1,132 +1,146 @@
-"""ChatGPT Browser Adapter — simple, reliable, Playwright-native.
+"""ChatGPT Browser Connector — connects to user's existing Chrome.
 
-Design principles:
-- Use Playwright built-in capabilities (persistent context, locators, retry)
-- No custom recovery state machine
-- No browser pool
-- No distributed runtime
-- Keep it simple enough to actually work
+Key insight from Reality Phase #001:
+- Cloudflare blocks headless Chromium
+- Don't fight Cloudflare
+- Attach to the user's existing Chrome instead
 
-Goal: 24h reliability, 95% success rate.
+Architecture change:
+    Before: Egregore → Launch Chromium → ChatGPT (CAPTCHA blocked)
+    After:  Egregore → CDP → User's Chrome → ChatGPT (trusted session)
 
-Lifecycle:
-1. launch() — open persistent context, navigate to ChatGPT
-2. send(prompt) — type prompt, wait for response, return text
-3. health_check() — verify page is functional
-4. close() — cleanup
+Why this works:
+- User's Chrome has cookies, login state, Plus subscription
+- User's Chrome has Cloudflare trust (real browsing history)
+- No CAPTCHA, no login, no popup
+- Completely silent
 
-Playwright features used:
-- launch_persistent_context() — preserves login state
-- Locator API — resilient element finding
-- get_by_role() / get_by_test_id() — stable selectors
-- wait_for() — wait for elements
+Usage:
+    1. Start Chrome with: chrome.exe --remote-debugging-port=9222
+    2. Run Egregore: adapter = ChatGPTConnector(); await adapter.connect()
+    3. Send prompts: response = await adapter.send("What is 2+2?")
+
+Playwright feature used: chromium.connect_over_cdp()
 """
 
 from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
 
 import structlog
-from playwright.async_api import BrowserContext, Page, Playwright, async_playwright
+from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
 
 logger = structlog.get_logger()
 
 CHATGPT_URL = "https://chatgpt.com/"
-DEFAULT_DATA_DIR = Path.home() / ".egregore" / "browser_data"
+DEFAULT_CDP_URL = "http://127.0.0.1:9222"
 
 
-class ChatGPTAdapter:
-    """Simple ChatGPT browser adapter.
+class ChatGPTConnector:
+    """Connects to user's existing Chrome via CDP.
 
-    Uses Playwright's persistent context to maintain login state.
-    No fancy recovery — if it breaks, restart the context.
+    Does NOT launch a new browser. Attaches to the user's
+    running Chrome instance. This means:
+    - No CAPTCHA
+    - No login
+    - No popup
+    - Silent operation
     """
 
-    def __init__(
-        self,
-        data_dir: Path | None = None,
-        headless: bool = True,
-    ) -> None:
-        self._data_dir = data_dir or DEFAULT_DATA_DIR / "chatgpt"
-        self._headless = headless
+    def __init__(self, cdp_url: str = DEFAULT_CDP_URL) -> None:
+        self._cdp_url = cdp_url
         self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
 
-    async def launch(self) -> None:
-        """Launch browser and navigate to ChatGPT.
+    async def connect(self) -> None:
+        """Connect to user's running Chrome instance.
 
-        Uses persistent context — cookies and login state survive restarts.
+        Prerequisites:
+        - Chrome must be running with --remote-debugging-port=9222
+        - User must be logged into ChatGPT in that Chrome
+
+        This does NOT launch a new browser. It attaches to the existing one.
         """
-        if self._playwright is not None:
+        if self._browser is not None:
             return
 
-        self._data_dir.mkdir(parents=True, exist_ok=True)
         self._playwright = await async_playwright().start()
 
-        self._context = await self._playwright.chromium.launch_persistent_context(
-            user_data_dir=str(self._data_dir),
-            headless=self._headless,
-            viewport={"width": 1280, "height": 800},
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-            ],
-        )
-
-        self._page = await self._context.new_page()
-        await self._page.goto(CHATGPT_URL, wait_until="domcontentloaded")
-
-        # Wait for the page to be interactive
         try:
-            await self._page.get_by_role("textbox").first.wait_for(timeout=15000)
-            logger.info("chatgpt_launched", url=CHATGPT_URL)
+            self._browser = await self._playwright.chromium.connect_over_cdp(self._cdp_url)
+            logger.info("chrome_connected", cdp_url=self._cdp_url)
         except Exception as e:
-            logger.warning("chatgpt_launch_timeout", error=str(e))
+            logger.error("chrome_connect_failed", error=str(e))
+            raise RuntimeError(
+                f"Cannot connect to Chrome at {self._cdp_url}. "
+                f"Make sure Chrome is running with --remote-debugging-port=9222"
+            ) from e
+
+        # Get existing context or create new one
+        contexts = self._browser.contexts
+        if contexts:
+            self._context = contexts[0]
+        else:
+            self._context = await self._browser.new_context()
+
+        # Find existing ChatGPT tab or create new one
+        for page in self._context.pages:
+            if CHATGPT_URL in page.url:
+                self._page = page
+                logger.info("chatgpt_tab_found", url=page.url)
+                break
+
+        if self._page is None:
+            self._page = await self._context.new_page()
+            await self._page.goto(CHATGPT_URL, wait_until="domcontentloaded")
+            logger.info("chatgpt_tab_created")
+
+        # Wait for page to be ready
+        try:
+            await self._page.get_by_role("textbox").first.wait_for(timeout=10000)
+            logger.info("chatgpt_ready")
+        except Exception as e:
+            logger.warning("chatgpt_not_ready", error=str(e))
 
     async def send(self, prompt: str, timeout_ms: int = 60000) -> str:
         """Send a prompt and wait for the complete response.
 
-        Simple flow:
-        1. Find input
-        2. Type prompt
-        3. Press Enter (or click send)
-        4. Wait for response to appear
-        5. Extract response text
-
-        Returns the response text, or empty string on failure.
+        Flow:
+        1. Find input (role=textbox)
+        2. Fill prompt
+        3. Press Enter
+        4. Wait for response to stabilize
+        5. Extract text
         """
         if self._page is None:
-            raise RuntimeError("Not launched. Call launch() first.")
+            raise RuntimeError("Not connected. Call connect() first.")
 
         page = self._page
 
-        # Step 1: Find and fill input
+        # Find and fill input
         input_el = page.get_by_role("textbox").first
         await input_el.wait_for(state="visible", timeout=10000)
         await input_el.click()
         await input_el.fill(prompt)
         await asyncio.sleep(0.3)
 
-        # Step 2: Send (Enter key is more reliable than clicking send button)
+        # Send
         await input_el.press("Enter")
 
-        # Step 3: Wait for response
-        # Strategy: wait for the response container to appear and stabilize
+        # Wait for response
         response_text = await self._wait_for_response(page, timeout_ms)
 
-        logger.info("chatgpt_response_received", length=len(response_text))
+        logger.info("response_received", length=len(response_text))
         return response_text
 
     async def health_check(self) -> bool:
-        """Check if ChatGPT is accessible and interactive."""
+        """Check if ChatGPT is accessible."""
         if self._page is None or self._page.is_closed():
             return False
-
         try:
-            # Check if we can find the input
             input_el = self._page.get_by_role("textbox").first
             await input_el.wait_for(state="visible", timeout=5000)
             return True
@@ -134,41 +148,30 @@ class ChatGPTAdapter:
             return False
 
     async def close(self) -> None:
-        """Shut down the browser."""
-        try:
-            if self._context:
-                await self._context.close()
-        except Exception:
-            pass
+        """Disconnect (does NOT close the user's browser)."""
+        # We don't close the browser — it belongs to the user
+        self._page = None
+        self._context = None
+        self._browser = None
         if self._playwright:
             await self._playwright.stop()
-        self._playwright = None
-        self._context = None
-        self._page = None
-        logger.info("chatgpt_closed")
+            self._playwright = None
+        logger.info("disconnected")
 
     @property
     def is_ready(self) -> bool:
         return self._page is not None and not self._page.is_closed()
 
     async def _wait_for_response(self, page: Page, timeout_ms: int) -> str:
-        """Wait for ChatGPT's response to complete and extract text.
-
-        Strategy:
-        1. Wait for response container to appear
-        2. Poll until streaming stops (no text changes for 2 seconds)
-        3. Extract final text
-        """
+        """Wait for response to complete and extract text."""
         start = time.monotonic()
         last_text = ""
         stable_count = 0
-        stable_threshold = 4  # 4 polls with no change = done (4 * 500ms = 2s)
+        stable_threshold = 4
 
-        # Wait a moment for response to start
         await asyncio.sleep(1.0)
 
         while (time.monotonic() - start) * 1000 < timeout_ms:
-            # Get current response text
             current_text = await self._extract_latest_response(page)
 
             if current_text and current_text != last_text:
@@ -177,15 +180,13 @@ class ChatGPTAdapter:
             elif current_text:
                 stable_count += 1
 
-            # Check if streaming is done
             if stable_count >= stable_threshold:
                 break
 
-            # Check for stop button (indicates streaming)
+            # Check stop button
             try:
                 stop_btn = page.locator("[data-testid='stop-button']")
                 if await stop_btn.count() == 0 and stable_count >= 2:
-                    # No stop button and text is stable — done
                     break
             except Exception:
                 pass
@@ -195,16 +196,11 @@ class ChatGPTAdapter:
         return last_text
 
     async def _extract_latest_response(self, page: Page) -> str:
-        """Extract the latest assistant response from the page.
-
-        Tries multiple selectors (fallback chain).
-        """
+        """Extract latest assistant response. Tries multiple selectors."""
         selectors = [
             "[data-message-author-role='assistant']:last-of-type",
             ".markdown.prose:last-of-type",
-            "[data-testid='assistant-message']:last-of-type",
         ]
-
         for selector in selectors:
             try:
                 elements = page.locator(selector)
@@ -215,5 +211,4 @@ class ChatGPTAdapter:
                         return text.strip()
             except Exception:
                 continue
-
         return ""
