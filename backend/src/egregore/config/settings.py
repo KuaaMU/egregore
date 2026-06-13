@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     summary_model: str = "qwen3:4b"
     summary_endpoint: str = "http://localhost:11434"
 
+    # Browser Runtime (V0.5)
+    browser_enabled: bool = False
+    browser_headless: bool = True
+    browser_data_dir: str = ""  # Default: ~/.egregore/browser_data
+    browser_slow_mo: int = 0  # Milliseconds to slow down Playwright
+
     model_config = {"env_prefix": "EGREGORE_", "env_file": ".env"}
 
 
