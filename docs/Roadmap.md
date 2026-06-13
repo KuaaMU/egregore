@@ -1,95 +1,77 @@
 # Egregore Roadmap
 
-## V0.5: Browser Runtime 🔄
+**Revised**: 2026-06-13 (Strategic Review)
 
-**Goal**: Stable, recoverable browser sessions for all major AI platforms.
+> The moat is collective intelligence, not browser automation.
+> Build synthesis, not infrastructure.
 
-### Core Infrastructure
-- [ ] Playwright integration (persistent contexts)
-- [ ] Session Manager (long-lived browser workers)
-- [ ] Browser Pool (resource management)
-- [ ] Page Pool (page reuse)
+---
 
-### Executor System
-- [ ] BaseExecutor interface (domain port)
-- [ ] ChatGPTExecutor
-- [ ] ClaudeExecutor
-- [ ] GeminiExecutor
-- [ ] DeepSeekExecutor
-- [ ] GrokExecutor
+## V1: Collective Intelligence MVP 🔄
 
-### Locator System
-- [ ] Locator Repository (centralized selectors)
-- [ ] Fallback locator chains
-- [ ] Locator health checks
+**Goal**: Prove that multi-model consensus is valuable.
 
-### Observability
-- [ ] Stream Parser (per-provider)
-- [ ] Health Monitor
-- [ ] Recovery System (auto-retry with escalation)
-- [ ] Event emission for all lifecycle events
+**Success metric**: User asks a question → sees consensus + contradictions that no single model provides.
 
-### Persistence
-- [ ] Cookie/storage state persistence
-- [ ] Session metadata storage
-- [ ] Recovery state tracking
-
-## V1: Multi-LLM Round Table ✅
-
-**Goal**: Ask a question, get responses from multiple LLMs, see them side by side.
-
-- [x] Project scaffolding (backend + frontend)
-- [x] Hexagonal architecture
-- [x] Event bus
-- [x] Provider abstraction (BaseProvider — API-based)
-- [x] Mock provider for development
-- [x] OpenAI provider adapter
-- [x] Anthropic provider adapter
-- [x] Provider registry
-- [x] Round table orchestrator (parallel dispatch)
-- [x] FastAPI REST API
-- [x] Three-column frontend layout
-
-## V1.5: Consensus Engine
-
-**Goal**: Detect agreements, contradictions, and synthesize a unified answer.
-
-- [ ] Semantic similarity analysis
-- [ ] Agreement detection
-- [ ] Contradiction detection
+- [ ] API-based parallel dispatch (OpenAI, Anthropic, OpenRouter)
+- [ ] Response collection with metadata (latency, tokens, model)
+- [ ] Consensus Engine: detect agreements, contradictions, synthesize
 - [ ] Confidence scoring
-- [ ] Summary generation
+- [ ] Three-column UI (history, consensus, individual responses)
+- [ ] Streaming support (SSE)
+- [ ] Provider health (simple: available/unavailable)
+
+## V1.5: Browser Transport (optional)
+
+**Goal**: Add browser-based providers for platforms without APIs.
+
+**Only build if**: A target platform has no API and we need browser access.
+
+- [ ] Playwright persistent context for one provider
+- [ ] Basic selector management
+- [ ] Simple health check
 
 ## V2: Debate Engine
 
-**Goal**: Models can review and critique each other's responses.
+**Goal**: Models review and improve each other.
 
-- [ ] Critic agents
-- [ ] Reflection rounds
-- [ ] Revision agents
-- [ ] Debate moderator
+- [ ] Critic agent (reviews responses for errors, gaps)
+- [ ] Revision agent (improves based on critique)
+- [ ] Multi-round debate
+- [ ] Debate transcript in UI
 
 ## V3: Dynamic Weighting
 
-**Goal**: Route questions to the best provider based on domain expertise.
+**Goal**: Route questions to the best provider based on domain.
 
-- [ ] Domain specialization tracking
-- [ ] ELO rating system
-- [ ] Trust scores
+- [ ] Track success rate per provider per domain
+- [ ] ELO-style rating system
 - [ ] Adaptive routing
 
-## V4: Memory System
+## V4: Memory
 
-**Goal**: Persistent context and long-term memory.
+**Goal**: Persistent context across sessions.
 
 - [ ] Vector database integration
 - [ ] Long-term memory storage
-- [ ] Context window management
+- [ ] Context retrieval and relevance scoring
 
 ## V5: Agent Society
 
-**Goal**: Emergent intelligence from specialized agent collaboration.
+**Goal**: Emergent intelligence from specialized agents.
 
-- [ ] Multiple specialized agents
+- [ ] Specialized agents (researcher, critic, synthesizer)
 - [ ] Hierarchical organization
 - [ ] Emergent behavior detection
+
+---
+
+## Deferred (may never build)
+
+These were considered but deferred. They are infrastructure, not product:
+
+- ❌ Browser Pool / Distributed Runtime
+- ❌ Cloud Browser
+- ❌ Per-platform browser executors (ChatGPTExecutor, ClaudeExecutor, ...)
+- ❌ Complex recovery escalation system
+- ❌ Custom session management (use Playwright built-in)
