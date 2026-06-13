@@ -147,9 +147,9 @@ class HealthMonitor:
         """Update health state based on check result.
 
         Implements the health state machine:
-        - Successful check → HEALTHY (or stay DEGRADED)
-        - Failed check → increment failures, maybe DEGRADED/FAILED
-        - State transitions are validated
+        - Successful check → READY
+        - Failed check → OFFLINE or RECOVERING
+        - State transitions are validated against VALID_TRANSITIONS
         """
         current = self._health.get(result.provider_id)
         if current is None:
@@ -159,24 +159,34 @@ class HealthMonitor:
         now = datetime.now(timezone.utc)
 
         if result.login_ok and result.stream_ok:
-            # Success
-            new_status = HealthStatus.HEALTHY
+            # Success → READY
+            new_status = HealthStatus.READY
             new_consecutive_failures = 0
             new_last_success = now
             new_last_failure = current.last_failure
+            status_message = ""
         else:
             # Failure
             new_consecutive_failures = current.consecutive_failures + 1
             new_last_success = current.last_success
             new_last_failure = now
 
-            # Determine new status based on failure count
-            if new_consecutive_failures >= 5:
-                new_status = HealthStatus.FAILED
+            # Determine new status based on error type
+            if result.error and "auth" in result.error.lower():
+                new_status = HealthStatus.AUTH_EXPIRED
+                status_message = "Login session expired"
+            elif result.error and "rate" in result.error.lower():
+                new_status = HealthStatus.RATE_LIMITED
+                status_message = "Rate limited by platform"
+            elif new_consecutive_failures >= 5:
+                new_status = HealthStatus.OFFLINE
+                status_message = f"Offline after {new_consecutive_failures} failures"
             elif new_consecutive_failures >= 3:
                 new_status = HealthStatus.RECOVERING
+                status_message = "Attempting recovery"
             else:
-                new_status = HealthStatus.DEGRADED
+                new_status = HealthStatus.OFFLINE
+                status_message = result.error or "Health check failed"
 
         # Validate transition
         if not current.can_transition_to(new_status):
@@ -186,7 +196,8 @@ class HealthMonitor:
                 from_status=current.status,
                 to_status=new_status,
             )
-            new_status = current.status  # Stay in current state
+            new_status = current.status
+            status_message = current.status_message
 
         # Calculate success rate
         new_total = current.total_requests + 1
@@ -203,6 +214,7 @@ class HealthMonitor:
             consecutive_failures=new_consecutive_failures,
             total_requests=new_total,
             total_failures=new_failures,
+            status_message=status_message,
         )
 
         self._health[result.provider_id] = updated
@@ -214,6 +226,7 @@ class HealthMonitor:
                 provider_id=result.provider_id,
                 from_status=current.status,
                 to_status=new_status,
+                message=status_message,
             )
 
         return updated

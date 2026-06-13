@@ -29,55 +29,73 @@ class TestHealthStateMachine:
         health = ProviderHealth(provider_id="test")
         assert health.status == HealthStatus.UNKNOWN
 
-    def test_unknown_to_healthy(self):
+    def test_unknown_to_ready(self):
         health = ProviderHealth(provider_id="test")
-        assert health.can_transition_to(HealthStatus.HEALTHY)
+        assert health.can_transition_to(HealthStatus.READY)
 
-    def test_healthy_to_degraded(self):
-        health = ProviderHealth(provider_id="test", status=HealthStatus.HEALTHY)
-        assert health.can_transition_to(HealthStatus.DEGRADED)
+    def test_ready_to_busy(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.READY)
+        assert health.can_transition_to(HealthStatus.BUSY)
 
-    def test_healthy_cannot_go_to_recovering(self):
-        """HEALTHY must go through DEGRADED first."""
-        health = ProviderHealth(provider_id="test", status=HealthStatus.HEALTHY)
-        assert not health.can_transition_to(HealthStatus.RECOVERING)
+    def test_ready_to_throttled(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.READY)
+        assert health.can_transition_to(HealthStatus.THROTTLED)
 
-    def test_degraded_to_recovering(self):
-        health = ProviderHealth(provider_id="test", status=HealthStatus.DEGRADED)
+    def test_ready_to_auth_expired(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.READY)
+        assert health.can_transition_to(HealthStatus.AUTH_EXPIRED)
+
+    def test_ready_to_offline(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.READY)
+        assert health.can_transition_to(HealthStatus.OFFLINE)
+
+    def test_busy_to_ready(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.BUSY)
+        assert health.can_transition_to(HealthStatus.READY)
+
+    def test_throttled_to_ready(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.THROTTLED)
+        assert health.can_transition_to(HealthStatus.READY)
+
+    def test_auth_expired_to_recovering(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.AUTH_EXPIRED)
         assert health.can_transition_to(HealthStatus.RECOVERING)
+
+    def test_offline_to_recovering(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.OFFLINE)
+        assert health.can_transition_to(HealthStatus.RECOVERING)
+
+    def test_recovering_to_ready(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.RECOVERING)
+        assert health.can_transition_to(HealthStatus.READY)
 
     def test_failed_to_recovering(self):
         health = ProviderHealth(provider_id="test", status=HealthStatus.FAILED)
         assert health.can_transition_to(HealthStatus.RECOVERING)
 
-    def test_failed_cannot_go_directly_to_healthy(self):
-        """FAILED must go through RECOVERING first."""
-        health = ProviderHealth(provider_id="test", status=HealthStatus.FAILED)
-        assert not health.can_transition_to(HealthStatus.HEALTHY)
-
-    def test_is_available_when_healthy(self):
-        health = ProviderHealth(provider_id="test", status=HealthStatus.HEALTHY)
+    def test_is_available_when_ready(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.READY)
         assert health.is_available
 
-    def test_is_available_when_degraded(self):
-        health = ProviderHealth(provider_id="test", status=HealthStatus.DEGRADED)
+    def test_is_available_when_busy(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.BUSY)
         assert health.is_available
 
-    def test_not_available_when_failed(self):
-        health = ProviderHealth(provider_id="test", status=HealthStatus.FAILED)
+    def test_not_available_when_offline(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.OFFLINE)
         assert not health.is_available
 
-    def test_needs_recovery_when_expired(self):
-        health = ProviderHealth(provider_id="test", status=HealthStatus.EXPIRED)
+    def test_needs_recovery_when_auth_expired(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.AUTH_EXPIRED)
         assert health.needs_recovery
 
-    def test_success_rate_calculation(self):
-        health = ProviderHealth(
-            provider_id="test",
-            total_requests=10,
-            total_failures=3,
-        )
-        assert health.success_rate == 0.0  # Set externally, not calculated
+    def test_should_wait_when_throttled(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.THROTTLED)
+        assert health.should_wait
+
+    def test_should_wait_when_rate_limited(self):
+        health = ProviderHealth(provider_id="test", status=HealthStatus.RATE_LIMITED)
+        assert health.should_wait
 
 
 # === Session State Tests ===
@@ -146,13 +164,25 @@ class TestStreamEvents:
 
     def test_token_event(self):
         event = StreamEvent(
-            type=StreamEventType.TOKEN,
+            type=StreamEventType.ANSWER_TOKEN,
             provider_id="test",
             content="hello",
         )
         assert event.is_token
+        assert event.is_answer
+        assert not event.is_thinking
         assert not event.is_complete
         assert not event.is_error
+
+    def test_thinking_token_event(self):
+        event = StreamEvent(
+            type=StreamEventType.THINKING_TOKEN,
+            provider_id="test",
+            content="let me think...",
+        )
+        assert event.is_token
+        assert event.is_thinking
+        assert not event.is_answer
 
     def test_complete_event(self):
         event = StreamEvent(
@@ -172,9 +202,16 @@ class TestStreamEvents:
         assert event.is_error
         assert not event.is_token
 
+    def test_cancelled_event(self):
+        event = StreamEvent(
+            type=StreamEventType.CANCELLED,
+            provider_id="test",
+        )
+        assert event.is_error
+
     def test_event_is_frozen(self):
         event = StreamEvent(
-            type=StreamEventType.TOKEN,
+            type=StreamEventType.ANSWER_TOKEN,
             provider_id="test",
             content="hello",
         )
@@ -183,7 +220,51 @@ class TestStreamEvents:
 
     def test_stream_event_types(self):
         assert StreamEventType.STARTED.value == "stream.started"
-        assert StreamEventType.TOKEN.value == "stream.token"
+        assert StreamEventType.ANSWER_TOKEN.value == "stream.answer.token"
+        assert StreamEventType.THINKING_TOKEN.value == "stream.thinking.token"
         assert StreamEventType.COMPLETED.value == "stream.completed"
         assert StreamEventType.ERROR.value == "stream.error"
-        assert StreamEventType.TIMEOUT.value == "stream.timeout"
+        assert StreamEventType.CANCELLED.value == "stream.cancelled"
+        assert StreamEventType.TOOL_CALL.value == "stream.tool.call"
+        assert StreamEventType.TOOL_RESULT.value == "stream.tool.result"
+
+
+# === Capabilities Tests ===
+
+
+class TestCapabilities:
+    """Test the capability model."""
+
+    def test_chatgpt_capabilities(self):
+        from egregore.domain.executor.capabilities import Capabilities
+
+        caps = Capabilities.chatgpt()
+        assert caps.streaming
+        assert caps.vision
+        assert caps.tool_use
+        assert caps.web_search
+
+    def test_claude_capabilities(self):
+        from egregore.domain.executor.capabilities import Capabilities
+
+        caps = Capabilities.claude()
+        assert caps.streaming
+        assert caps.thinking
+        assert caps.vision
+        assert caps.supports_continuation
+
+    def test_mock_capabilities(self):
+        from egregore.domain.executor.capabilities import Capabilities
+
+        caps = Capabilities.mock()
+        assert caps.streaming
+        assert not caps.thinking
+        assert not caps.vision
+
+    def test_supports_method(self):
+        from egregore.domain.executor.capabilities import Capabilities
+
+        caps = Capabilities.claude()
+        assert caps.supports("thinking")
+        assert caps.supports("vision")
+        assert not caps.supports("web_search")

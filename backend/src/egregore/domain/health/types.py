@@ -3,11 +3,15 @@
 Health is a first-class concept, not an afterthought.
 Every provider has a health status that drives routing decisions.
 
+The health model is a proper state machine, not a boolean.
+
 Pattern: State Machine
 
-Health states form a directed graph with defined transitions.
-The state machine prevents invalid transitions (e.g., FAILED → HEALTHY
-must go through RECOVERING first).
+UI visualization:
+    ChatGPT   🟢 READY     98%  120ms
+    Claude    🟡 BUSY       95%  200ms
+    Gemini    🔴 OFFLINE     0%  —
+    DeepSeek  🟠 THROTTLED  85%  500ms
 """
 
 from __future__ import annotations
@@ -21,32 +25,89 @@ from pydantic import BaseModel, Field
 class HealthStatus(str, Enum):
     """Provider health state machine.
 
+    These states describe the provider's ability to accept requests.
+    They are more granular than healthy/unhealthy.
+
     Transitions:
-        UNKNOWN → HEALTHY (first successful check)
-        HEALTHY → DEGRADED (success rate < 90%)
-        DEGRADED → HEALTHY (success rate >= 90%)
-        DEGRADED → RECOVERING (3 consecutive failures)
-        RECOVERING → HEALTHY (recovery succeeds)
-        RECOVERING → FAILED (recovery fails 3x)
-        FAILED → RECOVERING (manual trigger or periodic retry)
+        UNKNOWN → READY (first successful interaction)
+        READY ↔ BUSY (processing a request)
+        READY → THROTTLED (rate limited by platform)
+        READY → AUTH_EXPIRED (login session expired)
+        READY → OFFLINE (connection lost)
+        BUSY → READY (request completed)
+        THROTTLED → READY (cooldown expired)
+        AUTH_EXPIRED → RECOVERING (auto-recovery triggered)
+        OFFLINE → RECOVERING (reconnection attempt)
+        RECOVERING → READY (recovery succeeded)
+        RECOVERING → OFFLINE (recovery failed)
     """
 
-    UNKNOWN = "unknown"
-    HEALTHY = "healthy"
-    DEGRADED = "degraded"
-    RECOVERING = "recovering"
-    EXPIRED = "expired"  # Login expired, needs re-auth
-    FAILED = "failed"
+    UNKNOWN = "unknown"  # Initial state, never checked
+    READY = "ready"  # Can accept requests
+    BUSY = "busy"  # Currently processing a request
+    THROTTLED = "throttled"  # Rate limited, wait before retry
+    AUTH_EXPIRED = "auth_expired"  # Login session expired
+    RATE_LIMITED = "rate_limited"  # Platform rate limit hit
+    RECOVERING = "recovering"  # Attempting to recover
+    OFFLINE = "offline"  # Cannot connect
+    FAILED = "failed"  # Unrecoverable failure
+
+    @property
+    def emoji(self) -> str:
+        """Human-readable status indicator."""
+        return {
+            HealthStatus.UNKNOWN: "⚪",
+            HealthStatus.READY: "🟢",
+            HealthStatus.BUSY: "🟡",
+            HealthStatus.THROTTLED: "🟠",
+            HealthStatus.AUTH_EXPIRED: "🔐",
+            HealthStatus.RATE_LIMITED: "🟠",
+            HealthStatus.RECOVERING: "🔄",
+            HealthStatus.OFFLINE: "🔴",
+            HealthStatus.FAILED: "❌",
+        }.get(self, "⚪")
 
 
 # Valid state transitions — prevents illegal state changes
 VALID_TRANSITIONS: dict[HealthStatus, set[HealthStatus]] = {
-    HealthStatus.UNKNOWN: {HealthStatus.HEALTHY, HealthStatus.FAILED},
-    HealthStatus.HEALTHY: {HealthStatus.DEGRADED, HealthStatus.EXPIRED, HealthStatus.FAILED},
-    HealthStatus.DEGRADED: {HealthStatus.HEALTHY, HealthStatus.RECOVERING, HealthStatus.FAILED},
-    HealthStatus.RECOVERING: {HealthStatus.HEALTHY, HealthStatus.FAILED},
-    HealthStatus.EXPIRED: {HealthStatus.RECOVERING, HealthStatus.FAILED},
-    HealthStatus.FAILED: {HealthStatus.RECOVERING},
+    HealthStatus.UNKNOWN: {HealthStatus.READY, HealthStatus.OFFLINE, HealthStatus.FAILED},
+    HealthStatus.READY: {
+        HealthStatus.BUSY,
+        HealthStatus.THROTTLED,
+        HealthStatus.AUTH_EXPIRED,
+        HealthStatus.RATE_LIMITED,
+        HealthStatus.OFFLINE,
+        HealthStatus.FAILED,
+    },
+    HealthStatus.BUSY: {
+        HealthStatus.READY,
+        HealthStatus.OFFLINE,
+        HealthStatus.FAILED,
+    },
+    HealthStatus.THROTTLED: {
+        HealthStatus.READY,
+        HealthStatus.OFFLINE,
+    },
+    HealthStatus.AUTH_EXPIRED: {
+        HealthStatus.RECOVERING,
+        HealthStatus.FAILED,
+    },
+    HealthStatus.RATE_LIMITED: {
+        HealthStatus.READY,
+        HealthStatus.RECOVERING,
+    },
+    HealthStatus.RECOVERING: {
+        HealthStatus.READY,
+        HealthStatus.OFFLINE,
+        HealthStatus.FAILED,
+    },
+    HealthStatus.OFFLINE: {
+        HealthStatus.RECOVERING,
+        HealthStatus.FAILED,
+    },
+    HealthStatus.FAILED: {
+        HealthStatus.RECOVERING,
+    },
 }
 
 
@@ -70,20 +131,43 @@ class ProviderHealth(BaseModel):
     consecutive_failures: int = 0
     total_requests: int = 0
     total_failures: int = 0
+    status_message: str = ""  # Human-readable status detail
 
     @property
     def is_available(self) -> bool:
         """Can this provider accept new requests?"""
-        return self.status in (HealthStatus.HEALTHY, HealthStatus.DEGRADED)
+        return self.status in (HealthStatus.READY, HealthStatus.BUSY)
+
+    @property
+    def is_busy(self) -> bool:
+        """Is this provider currently processing?"""
+        return self.status == HealthStatus.BUSY
 
     @property
     def needs_recovery(self) -> bool:
         """Should recovery be triggered?"""
-        return self.status in (HealthStatus.EXPIRED, HealthStatus.FAILED)
+        return self.status in (
+            HealthStatus.AUTH_EXPIRED,
+            HealthStatus.OFFLINE,
+            HealthStatus.FAILED,
+        )
+
+    @property
+    def should_wait(self) -> bool:
+        """Should callers wait before sending requests?"""
+        return self.status in (HealthStatus.THROTTLED, HealthStatus.RATE_LIMITED)
 
     def can_transition_to(self, new_status: HealthStatus) -> bool:
         """Check if a state transition is valid."""
         return new_status in VALID_TRANSITIONS.get(self.status, set())
+
+    @property
+    def display(self) -> str:
+        """Human-readable status for UI."""
+        emoji = self.status.emoji
+        rate = f"{self.success_rate:.0%}" if self.total_requests > 0 else "—"
+        latency = f"{self.latency_ms:.0f}ms" if self.latency_ms > 0 else "—"
+        return f"{emoji} {self.status.value} {rate} {latency}"
 
 
 class HealthCheckResult(BaseModel):
