@@ -1,0 +1,178 @@
+{
+  "summary": {
+    "total": 20,
+    "successes": 20,
+    "failures": 0,
+    "success_rate": 1.0,
+    "elapsed_hours": 0.36,
+    "latency_ms": {
+      "p50": 6438.4,
+      "p95": 11388.4,
+      "p99": 13043.0,
+      "avg": 6911.7
+    },
+    "failure_breakdown": {}
+  },
+  "results": [
+    {
+      "timestamp": "2026-06-13T17:10:36.819598+00:00",
+      "request": 1,
+      "prompt": "What is 2+2?",
+      "response_length": 320,
+      "success": true,
+      "latency_ms": 6553.347299981397
+    },
+    {
+      "timestamp": "2026-06-13T17:11:42.754336+00:00",
+      "request": 2,
+      "prompt": "Name three programming languages.",
+      "response_length": 468,
+      "success": true,
+      "latency_ms": 5914.626100042369
+    },
+    {
+      "timestamp": "2026-06-13T17:12:48.727288+00:00",
+      "request": 3,
+      "prompt": "What is the capital of Japan?",
+      "response_length": 375,
+      "success": true,
+      "latency_ms": 5944.733699958306
+    },
+    {
+      "timestamp": "2026-06-13T17:13:54.360413+00:00",
+      "request": 4,
+      "prompt": "Explain recursion in one sentence.",
+      "response_length": 439,
+      "success": true,
+      "latency_ms": 5608.349899994209
+    },
+    {
+      "timestamp": "2026-06-13T17:15:00.530981+00:00",
+      "request": 5,
+      "prompt": "What color is the sky?",
+      "response_length": 590,
+      "success": true,
+      "latency_ms": 6156.468799978029
+    },
+    {
+      "timestamp": "2026-06-13T17:16:07.139796+00:00",
+      "request": 6,
+      "prompt": "Name a mammal that can fly.",
+      "response_length": 404,
+      "success": true,
+      "latency_ms": 6589.855800033547
+    },
+    {
+      "timestamp": "2026-06-13T17:17:13.100909+00:00",
+      "request": 7,
+      "prompt": "What is 10 * 15?",
+      "response_length": 268,
+      "success": true,
+      "latency_ms": 5938.81079996936
+    },
+    {
+      "timestamp": "2026-06-13T17:18:19.558432+00:00",
+      "request": 8,
+      "prompt": "What day comes after Monday?",
+      "response_length": 185,
+      "success": true,
+      "latency_ms": 6437.675099994522
+    },
+    {
+      "timestamp": "2026-06-13T17:19:26.036335+00:00",
+      "request": 9,
+      "prompt": "What is the boiling point of water?",
+      "response_length": 532,
+      "success": true,
+      "latency_ms": 6467.7979000261985
+    },
+    {
+      "timestamp": "2026-06-13T17:20:33.617064+00:00",
+      "request": 10,
+      "prompt": "Name two rivers in Africa.",
+      "response_length": 566,
+      "success": true,
+      "latency_ms": 7554.063800023869
+    },
+    {
+      "timestamp": "2026-06-13T17:21:40.069927+00:00",
+      "request": 11,
+      "prompt": "What is 2+2?",
+      "response_length": 273,
+      "success": true,
+      "latency_ms": 6439.180700050201
+    },
+    {
+      "timestamp": "2026-06-13T17:22:46.577116+00:00",
+      "request": 12,
+      "prompt": "Name three programming languages.",
+      "response_length": 522,
+      "success": true,
+      "latency_ms": 6495.540499978233
+    },
+    {
+      "timestamp": "2026-06-13T17:23:57.875745+00:00",
+      "request": 13,
+      "prompt": "What is the capital of Japan?",
+      "response_length": 369,
+      "success": true,
+      "latency_ms": 11279.517000017222
+    },
+    {
+      "timestamp": "2026-06-13T17:25:03.595613+00:00",
+      "request": 14,
+      "prompt": "Explain recursion in one sentence.",
+      "response_length": 423,
+      "success": true,
+      "latency_ms": 5695.569900039118
+    },
+    {
+      "timestamp": "2026-06-13T17:26:09.669730+00:00",
+      "request": 15,
+      "prompt": "What color is the sky?",
+      "response_length": 615,
+      "success": true,
+      "latency_ms": 6055.852900026366
+    },
+    {
+      "timestamp": "2026-06-13T17:27:23.152884+00:00",
+      "request": 16,
+      "prompt": "Name a mammal that can fly.",
+      "response_length": 394,
+      "success": true,
+      "latency_ms": 13456.646700040437
+    },
+    {
+      "timestamp": "2026-06-13T17:28:29.675529+00:00",
+      "request": 17,
+      "prompt": "What is 10 * 15?",
+      "response_length": 269,
+      "success": true,
+      "latency_ms": 6504.946600005496
+    },
+    {
+      "timestamp": "2026-06-13T17:29:35.225439+00:00",
+      "request": 18,
+      "prompt": "What day comes after Monday?",
+      "response_length": 204,
+      "success": true,
+      "latency_ms": 5526.709199999459
+    },
+    {
+      "timestamp": "2026-06-13T17:30:41.270992+00:00",
+      "request": 19,
+      "prompt": "What is the boiling point of water?",
+      "response_length": 510,
+      "success": true,
+      "latency_ms": 6020.543699967675
+    },
+    {
+      "timestamp": "2026-06-13T17:31:48.889490+00:00",
+      "request": 20,
+      "prompt": "Name two rivers in Africa.",
+      "response_length": 449,
+      "success": true,
+      "latency_ms": 7594.371400016826
+    }
+  ]
+}
