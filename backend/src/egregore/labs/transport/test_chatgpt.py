@@ -24,21 +24,22 @@ from egregore.infrastructure.transport.chatgpt_browser import ChatGPTAdapter
 
 
 async def main():
-    headless = "--headless" in sys.argv
+    # Default headless. Use --no-headless to see the browser.
+    headless = "--no-headless" not in sys.argv
 
     print(f"Launching ChatGPT adapter (headless={headless})...")
     adapter = ChatGPTAdapter(headless=headless)
 
     try:
         await adapter.launch()
-        print("✓ Launched")
+        print("[OK] Launched")
 
         # Health check
         healthy = await adapter.health_check()
-        print(f"✓ Health: {'OK' if healthy else 'FAILED'}")
+        print(f"[OK] Health: {'OK' if healthy else 'FAILED'}")
 
         if not healthy:
-            print("⚠ ChatGPT not ready. You may need to login manually.")
+            print("[WARN] ChatGPT not ready. You may need to login manually.")
             print("  Run without --headless to login interactively.")
             return
 
@@ -62,14 +63,14 @@ async def main():
         print(response2)
         print("-" * 40)
 
-        print("\n✓ All tests passed")
+        print("\n[OK] All tests passed")
 
     except Exception as e:
-        print(f"\n✗ Error: {e}")
+        print(f"\n[ERROR] {e}")
 
     finally:
         await adapter.close()
-        print("✓ Closed")
+        print("[OK] Closed")
 
 
 if __name__ == "__main__":
