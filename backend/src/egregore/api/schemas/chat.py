@@ -3,12 +3,7 @@
 Pattern: DTO (Data Transfer Object)
 
 These schemas are the contract between frontend and backend.
-They are separate from domain entities because:
-1. API schema evolution is independent of domain evolution
-2. We can add API-specific fields (e.g., request_id)
-3. We can hide internal fields from the API
-
-Why Pydantic? FastAPI uses it for validation and docs generation.
+They map domain entities to API responses.
 """
 
 from __future__ import annotations
@@ -42,13 +37,35 @@ class ProviderResponseSchema(BaseModel):
     error: str | None = None
 
 
-class ConsensusSchema(BaseModel):
-    """The synthesized consensus (V1: simple summary)."""
+class DifferenceSchema(BaseModel):
+    """A difference between model responses."""
 
-    common_points: list[str]
-    differences: list[str]
-    synthesis: str
-    confidence: float = Field(ge=0.0, le=1.0)
+    topic: str
+    type: str  # contradiction, emphasis, approach, scope, uncertainty
+    models: dict[str, str] = Field(default_factory=dict)
+    analysis: str = ""
+
+
+class SourceContributionSchema(BaseModel):
+    """What a model contributed to the synthesis."""
+
+    model_id: str
+    contributions: list[str] = Field(default_factory=list)
+    strength: str = ""
+
+
+class SynthesisSchema(BaseModel):
+    """The synthesized result — the core output of Egregore.
+
+    This is what makes Egregore different from a chat aggregator.
+    """
+
+    agreements: list[str] = Field(default_factory=list)
+    contradictions: list[DifferenceSchema] = Field(default_factory=list)
+    unified_answer: str = ""
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    uncertainty: list[str] = Field(default_factory=list)
+    source_map: list[SourceContributionSchema] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
@@ -57,7 +74,7 @@ class ChatResponse(BaseModel):
     id: str
     prompt: str
     responses: list[ProviderResponseSchema]
-    consensus: ConsensusSchema | None = None
+    synthesis: SynthesisSchema | None = None
     total_latency_ms: float
 
 

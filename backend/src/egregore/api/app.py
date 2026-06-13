@@ -2,19 +2,10 @@
 
 Pattern: Application Factory / Composition Root
 
-This is where all the pieces come together. The factory:
-1. Creates the event bus
-2. Creates the browser runtime (Playwright)
-3. Creates the session manager
-4. Creates and registers transports
-5. Creates the health monitor & recovery manager
-6. Creates the orchestrator
-7. Initializes the router
+This is where all the pieces come together.
 
-Why a factory function over a global app?
-- Testable — we can create multiple instances with different configs
-- Explicit dependency wiring
-- No import-time side effects
+V1 flow:
+    User Prompt → Round Table (parallel dispatch) → Synthesis Engine → Result
 """
 
 from __future__ import annotations
@@ -25,14 +16,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from egregore.api.routers.chat import init_chat_router, router as chat_router
 from egregore.application.orchestrators.round_table import RoundTableOrchestrator
+from egregore.application.synthesis.engine import SynthesisEngine
 from egregore.config.settings import settings
 from egregore.domain.events.bus import EventBus
 from egregore.domain.providers.base import ProviderConfig
 from egregore.domain.providers.registry import ProviderRegistry
-from egregore.infrastructure.browser.runtime.chromium import ChromiumRuntime
-from egregore.infrastructure.browser.sessions.manager import SessionManager
-from egregore.infrastructure.browser.health.monitor import HealthMonitor
-from egregore.infrastructure.browser.recovery.manager import RecoveryManager
 from egregore.infrastructure.providers.mock import MockProvider
 
 logger = structlog.get_logger()
@@ -41,18 +29,15 @@ logger = structlog.get_logger()
 def create_app() -> FastAPI:
     """Create and configure the Egregore application.
 
-    This is the composition root — the only place that knows about
-    all concrete implementations. Everything else uses abstractions.
-
     Dependency graph:
         EventBus
-        ChromiumRuntime → SessionManager → BrowserTransport
-        HealthMonitor → RecoveryManager
         ProviderRegistry → RoundTableOrchestrator
+        SynthesisEngine (uses a provider as synthesizer)
+        → ChatRouter
     """
     app = FastAPI(
         title="Egregore",
-        description="Where Intelligence Emerges Together",
+        description="A Synthesis Engine for Collective Intelligence",
         version="0.2.0",
     )
 
@@ -67,180 +52,130 @@ def create_app() -> FastAPI:
 
     # === Wire up dependencies ===
 
-    # 1. Event Bus (the nervous system)
+    # 1. Event Bus
     event_bus = EventBus()
 
-    # 2. Browser Runtime (Playwright engine)
-    chromium = ChromiumRuntime(headless=settings.browser_headless)
-
-    # 3. Session Manager (long-lived browser sessions)
-    session_manager = SessionManager(runtime=chromium)
-
-    # 4. Health Monitor
-    health_monitor = HealthMonitor(event_bus=event_bus)
-
-    # 5. Recovery Manager
-    recovery_manager = RecoveryManager(
-        session_manager=session_manager,
-        runtime=chromium,
-        event_bus=event_bus,
-    )
-
-    # 6. Provider Registry
+    # 2. Provider Registry
     registry = ProviderRegistry()
 
-    # 7. Register providers (browser transports or mock)
-    _register_providers(registry, session_manager, health_monitor)
+    # 3. Register providers
+    _register_providers(registry)
 
-    # 8. Orchestrator
+    # 4. Orchestrator
     orchestrator = RoundTableOrchestrator(
         registry=registry,
         event_bus=event_bus,
     )
 
-    # 9. Initialize router
-    init_chat_router(orchestrator, registry)
+    # 5. Synthesis Engine
+    synthesis = _create_synthesis_engine(registry)
 
-    # 10. Include router
+    # 6. Initialize router
+    init_chat_router(orchestrator, registry, synthesis)
+
+    # 7. Include router
     app.include_router(chat_router)
 
-    # 11. Root endpoint
+    # 8. Root endpoint
     @app.get("/")
     async def root():
         return {
             "name": "Egregore",
-            "tagline": "Where Intelligence Emerges Together",
+            "tagline": "A Synthesis Engine for Collective Intelligence",
             "version": "0.2.0",
             "docs": "/docs",
         }
 
-    # 12. Health endpoint
+    # 9. Health endpoint
     @app.get("/health")
     async def health():
         return {
             "status": "ok",
             "providers": registry.provider_ids,
-            "browser_running": chromium.is_running,
-            "active_contexts": chromium.active_contexts,
-            "health": {
-                pid: {
-                    "status": h.status.value,
-                    "success_rate": h.success_rate,
-                    "latency_ms": h.latency_ms,
-                }
-                for pid, h in health_monitor.get_all_health().items()
-            },
+            "synthesis_enabled": synthesis is not None,
         }
-
-    # 13. Lifecycle events
-    @app.on_event("startup")
-    async def startup():
-        await chromium.start()
-        await health_monitor.start()
-        logger.info("egregore_started", providers=registry.provider_ids)
-
-    @app.on_event("shutdown")
-    async def shutdown():
-        await health_monitor.stop()
-        await session_manager.close_all()
-        await chromium.close()
-        logger.info("egregore_stopped")
 
     logger.info(
         "app_created",
         providers=registry.provider_ids,
-        debug=settings.debug,
+        synthesis_enabled=synthesis is not None,
     )
 
     return app
 
 
-def _register_providers(
-    registry: ProviderRegistry,
-    session_manager: SessionManager,
-    health_monitor: HealthMonitor,
-) -> None:
-    """Register all available providers.
+def _register_providers(registry: ProviderRegistry) -> None:
+    """Register available providers.
 
-    Strategy:
-    1. If browser mode enabled → register browser transports
-    2. If API keys available → register API providers
-    3. Otherwise → register mock providers
+    Priority:
+    1. API keys → register real providers
+    2. No keys → register mock providers
     """
     has_providers = False
 
-    # Browser transports (V0.5)
-    if settings.browser_enabled:
-        _register_browser_providers(registry, session_manager, health_monitor)
-        has_providers = True
-
-    # API providers (V1 — kept for when API is available)
+    # OpenAI
     if settings.openai_api_key:
-        _register_api_provider(
-            registry, "openai", settings.openai_model, settings.openai_api_key
-        )
-        has_providers = True
-
-    if settings.anthropic_api_key:
-        _register_api_provider(
-            registry, "anthropic", settings.anthropic_model, settings.anthropic_api_key
-        )
-        has_providers = True
-
-    # Fallback: mock providers
-    if not has_providers:
-        logger.warning("no_providers_configured", action="registering_mocks")
-        _register_mock_providers(registry)
-
-
-def _register_browser_providers(
-    registry: ProviderRegistry,
-    session_manager: SessionManager,
-    health_monitor: HealthMonitor,
-) -> None:
-    """Register browser-based transports."""
-    from egregore.infrastructure.transport.chatgpt_browser import ChatGPTBrowserTransport
-
-    # ChatGPT
-    transport = ChatGPTBrowserTransport(session_manager=session_manager)
-    # Wrap in a provider adapter
-    from egregore.infrastructure.transport.provider_adapter import BrowserProviderAdapter
-
-    provider = BrowserProviderAdapter(transport=transport, model="chatgpt-4")
-    registry.register(provider)
-    health_monitor.register("chatgpt", transport)
-    logger.info("browser_provider_registered", provider="chatgpt")
-
-
-def _register_api_provider(
-    registry: ProviderRegistry, provider_id: str, model: str, api_key: str
-) -> None:
-    """Register an API-based provider."""
-    if provider_id == "openai":
         from egregore.infrastructure.providers.openai_provider import OpenAIProvider
 
         provider = OpenAIProvider(
-            config=ProviderConfig(provider_id=provider_id, model=model, api_key=api_key)
+            config=ProviderConfig(
+                provider_id="openai",
+                model=settings.openai_model,
+                api_key=settings.openai_api_key,
+            )
         )
-    elif provider_id == "anthropic":
+        registry.register(provider)
+        has_providers = True
+        logger.info("provider_registered", provider="openai", model=settings.openai_model)
+
+    # Anthropic
+    if settings.anthropic_api_key:
         from egregore.infrastructure.providers.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider(
-            config=ProviderConfig(provider_id=provider_id, model=model, api_key=api_key)
+            config=ProviderConfig(
+                provider_id="anthropic",
+                model=settings.anthropic_model,
+                api_key=settings.anthropic_api_key,
+            )
         )
-    else:
-        return
+        registry.register(provider)
+        has_providers = True
+        logger.info("provider_registered", provider="anthropic", model=settings.anthropic_model)
 
-    registry.register(provider)
-    logger.info("api_provider_registered", provider=provider_id, model=model)
+    # Fallback: mock providers
+    if not has_providers:
+        logger.warning("no_api_keys_found", action="registering_mock_providers")
+        _register_mock_providers(registry)
 
 
 def _register_mock_providers(registry: ProviderRegistry) -> None:
     """Register mock providers for development."""
     mock_configs = [
-        ("mock-gpt4", "gpt-4o-sim", "Mock GPT-4o: I would analyze this step by step."),
-        ("mock-claude", "claude-sim", "Mock Claude: Let me consider multiple perspectives."),
-        ("mock-llama", "llama-sim", "Mock Llama: Here are several relevant points."),
+        (
+            "mock-gpt4",
+            "gpt-4o-sim",
+            "From an engineering perspective, I'd recommend Rust for this use case. "
+            "The memory safety guarantees without garbage collection make it ideal for "
+            "systems programming. The learning curve is steep but the long-term benefits "
+            "are significant. Consider using Tokio for async runtime.",
+        ),
+        (
+            "mock-claude",
+            "claude-sim",
+            "I'd approach this differently. While Rust has clear performance advantages, "
+            "Go offers a better balance of simplicity and performance for most teams. "
+            "The goroutine model is elegant for concurrent workloads, and the ecosystem "
+            "is mature. Unless you need zero-cost abstractions, Go is the pragmatic choice.",
+        ),
+        (
+            "mock-llama",
+            "llama-sim",
+            "Both Rust and Go are excellent choices. For your specific requirements, "
+            "I'd suggest starting with Go for the rapid prototyping phase, then evaluating "
+            "whether performance-critical components need Rust. A hybrid approach often "
+            "works best in practice. Consider the team's existing expertise.",
+        ),
     ]
 
     for provider_id, model, response in mock_configs:
@@ -250,3 +185,46 @@ def _register_mock_providers(registry: ProviderRegistry) -> None:
             latency_ms=150.0 + hash(provider_id) % 200,
         )
         registry.register(provider)
+
+
+def _create_synthesis_engine(registry: ProviderRegistry) -> SynthesisEngine | None:
+    """Create the synthesis engine.
+
+    The synthesizer is a fast, cheap model that analyzes other models' responses.
+    Priority: OpenAI (fast model) → Anthropic → first available provider → mock
+    """
+    # Try to use a fast model for synthesis
+    if settings.openai_api_key:
+        from egregore.infrastructure.providers.openai_provider import OpenAIProvider
+
+        synthesizer = OpenAIProvider(
+            config=ProviderConfig(
+                provider_id="synthesizer",
+                model="gpt-4o-mini",  # Fast and cheap
+                api_key=settings.openai_api_key,
+            )
+        )
+        logger.info("synthesis_engine_created", model="gpt-4o-mini")
+        return SynthesisEngine(synthesizer=synthesizer)
+
+    if settings.anthropic_api_key:
+        from egregore.infrastructure.providers.anthropic_provider import AnthropicProvider
+
+        synthesizer = AnthropicProvider(
+            config=ProviderConfig(
+                provider_id="synthesizer",
+                model="claude-haiku-4-5-20251001",  # Fast and cheap
+                api_key=settings.anthropic_api_key,
+            )
+        )
+        logger.info("synthesis_engine_created", model="claude-haiku-4-5-20251001")
+        return SynthesisEngine(synthesizer=synthesizer)
+
+    # No real providers — use mock for development
+    logger.warning("no_synthesizer_available", action="using_mock")
+    mock_synth = MockProvider(
+        config=ProviderConfig(provider_id="synthesizer", model="mock-synth"),
+        response='{"unified_answer": "Mock synthesis: All models provide valuable perspectives. Consider a hybrid approach.", "confidence": 0.75, "uncertainty": ["Team expertise not considered"], "contributions": [{"model_id": "mock-gpt4", "contributions": ["Performance analysis"], "strength": "Engineering rigor"}, {"model_id": "mock-claude", "contributions": ["Pragmatic tradeoffs"], "strength": "Practical considerations"}, {"model_id": "mock-llama", "contributions": ["Hybrid approach"], "strength": "Balanced perspective"}]}',
+        latency_ms=100.0,
+    )
+    return SynthesisEngine(synthesizer=mock_synth)
