@@ -1,77 +1,100 @@
 # Egregore Roadmap
 
-**Revised**: 2026-06-13 (Strategic Review)
+**Revised**: 2026-06-13 (Transport-First)
 
-> The moat is collective intelligence, not browser automation.
-> Build synthesis, not infrastructure.
+> Users don't buy architectures. They buy lower cost and convenience.
+> Without reliable transport, nothing else matters.
 
 ---
 
-## V1: Collective Intelligence MVP 🔄
+## V0.8: ChatGPT Browser Adapter 🔄
 
-**Goal**: Prove that multi-model consensus is valuable.
+**Goal**: Prove Egregore can reliably talk to a real AI platform.
 
-**Success metric**: User asks a question → sees consensus + contradictions that no single model provides.
+**Success criteria**: 24h runtime, 95% success rate.
 
-- [ ] API-based parallel dispatch (OpenAI, Anthropic, OpenRouter)
-- [ ] Response collection with metadata (latency, tokens, model)
-- [ ] Consensus Engine: detect agreements, contradictions, synthesize
-- [ ] Confidence scoring
-- [ ] Three-column UI (history, consensus, individual responses)
-- [ ] Streaming support (SSE)
-- [ ] Provider health (simple: available/unavailable)
+- [x] ChatGPT Browser Adapter (Playwright persistent context)
+- [x] Simple send() / health_check() / close()
+- [x] Reliability test runner
+- [ ] First manual login + session save
+- [ ] 24h reliability test
+- [ ] Selector verification against live ChatGPT UI
 
-## V1.5: Browser Transport (optional)
+**Run**:
+```bash
+# First run (non-headless, manual login)
+uv run python -m egregore.labs.transport.test_chatgpt
 
-**Goal**: Add browser-based providers for platforms without APIs.
+# Reliability test (headless, 24h)
+uv run python -m egregore.labs.transport.reliability 24 300
+```
 
-**Only build if**: A target platform has no API and we need browser access.
+## V0.9: Claude Browser Adapter
 
-- [ ] Playwright persistent context for one provider
-- [ ] Basic selector management
-- [ ] Simple health check
+**Goal**: Second platform proves the pattern is reusable.
 
-## V2: Debate Engine
+- [ ] Claude Browser Adapter
+- [ ] 24h reliability test
+- [ ] Login state persistence
 
-**Goal**: Models review and improve each other.
+## V1: Round Table
 
-- [ ] Critic agent (reviews responses for errors, gaps)
-- [ ] Revision agent (improves based on critique)
-- [ ] Multi-round debate
-- [ ] Debate transcript in UI
+**Goal**: Parallel dispatch to multiple providers.
 
-## V3: Dynamic Weighting
+- [ ] Round Table Orchestrator (already built)
+- [ ] API providers (OpenAI, Anthropic — already built)
+- [ ] Browser providers (ChatGPT, Claude)
+- [ ] Three-column UI
 
-**Goal**: Route questions to the best provider based on domain.
+## V1.1: Synthesis Engine
 
-- [ ] Track success rate per provider per domain
-- [ ] ELO-style rating system
+**Goal**: Prove collective intelligence works.
+
+- [ ] Synthesis Engine (already built)
+- [ ] Benchmark: Synthesis > Best Individual > 70%
+- [ ] 12 benchmark cases across 7 domains
+
+## V1.5: Critic Engine
+
+**Goal**: Review and improve synthesis.
+
+- [ ] Critic agent reviews synthesis
+- [ ] Refined answer
+
+## V2: Dynamic Weighting
+
+**Goal**: Route to best provider based on domain.
+
+- [ ] ELO rating
+- [ ] Trust scores
 - [ ] Adaptive routing
 
-## V4: Memory
+## V3: Memory
 
 **Goal**: Persistent context across sessions.
 
-- [ ] Vector database integration
-- [ ] Long-term memory storage
-- [ ] Context retrieval and relevance scoring
+- [ ] Vector database
+- [ ] Long-term memory
+
+## V4: Debate
+
+**Goal**: Models critique each other.
+
+- [ ] Multi-round debate
+- [ ] Debate transcript
 
 ## V5: Agent Society
 
-**Goal**: Emergent intelligence from specialized agents.
+**Goal**: Emergent intelligence.
 
-- [ ] Specialized agents (researcher, critic, synthesizer)
+- [ ] Specialized agents
 - [ ] Hierarchical organization
-- [ ] Emergent behavior detection
 
 ---
 
-## Deferred (may never build)
-
-These were considered but deferred. They are infrastructure, not product:
+## Deferred (not building)
 
 - ❌ Browser Pool / Distributed Runtime
 - ❌ Cloud Browser
-- ❌ Per-platform browser executors (ChatGPTExecutor, ClaudeExecutor, ...)
-- ❌ Complex recovery escalation system
-- ❌ Custom session management (use Playwright built-in)
+- ❌ Complex Recovery State Machine
+- ❌ Per-platform browser executors (use simple adapters)

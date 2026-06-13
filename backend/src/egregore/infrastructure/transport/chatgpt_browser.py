@@ -1,133 +1,219 @@
-"""ChatGPT Browser Transport — concrete implementation for ChatGPT's web UI.
+"""ChatGPT Browser Adapter — simple, reliable, Playwright-native.
 
-This is the first real proof of the Browser Runtime pattern.
-It demonstrates how the transport/locator/session layers compose.
+Design principles:
+- Use Playwright built-in capabilities (persistent context, locators, retry)
+- No custom recovery state machine
+- No browser pool
+- No distributed runtime
+- Keep it simple enough to actually work
 
-Pattern: Template Method — base class defines the flow, this class
-provides the platform-specific steps.
+Goal: 24h reliability, 95% success rate.
+
+Lifecycle:
+1. launch() — open persistent context, navigate to ChatGPT
+2. send(prompt) — type prompt, wait for response, return text
+3. health_check() — verify page is functional
+4. close() — cleanup
+
+Playwright features used:
+- launch_persistent_context() — preserves login state
+- Locator API — resilient element finding
+- get_by_role() / get_by_test_id() — stable selectors
+- wait_for() — wait for elements
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+import time
+from pathlib import Path
 
 import structlog
-from playwright.async_api import Page
-
-from egregore.domain.executor.locator import LocatorChain
-from egregore.infrastructure.browser.locators import chatgpt as locators
-from egregore.infrastructure.browser.locators.resolver import LocatorResolver
-from egregore.infrastructure.browser.sessions.manager import SessionManager
-from egregore.infrastructure.transport.browser import BrowserTransport
+from playwright.async_api import BrowserContext, Page, Playwright, async_playwright
 
 logger = structlog.get_logger()
 
-# ChatGPT URLs
 CHATGPT_URL = "https://chatgpt.com/"
+DEFAULT_DATA_DIR = Path.home() / ".egregore" / "browser_data"
 
 
-class ChatGPTBrowserTransport(BrowserTransport):
-    """Browser transport for ChatGPT.
+class ChatGPTAdapter:
+    """Simple ChatGPT browser adapter.
 
-    Interacts with ChatGPT's web UI through Playwright.
+    Uses Playwright's persistent context to maintain login state.
+    No fancy recovery — if it breaks, restart the context.
     """
 
-    def __init__(self, session_manager: SessionManager) -> None:
-        super().__init__(
-            session_manager=session_manager,
-            provider_id="chatgpt",
-            base_url=CHATGPT_URL,
+    def __init__(
+        self,
+        data_dir: Path | None = None,
+        headless: bool = True,
+    ) -> None:
+        self._data_dir = data_dir or DEFAULT_DATA_DIR / "chatgpt"
+        self._headless = headless
+        self._playwright: Playwright | None = None
+        self._context: BrowserContext | None = None
+        self._page: Page | None = None
+
+    async def launch(self) -> None:
+        """Launch browser and navigate to ChatGPT.
+
+        Uses persistent context — cookies and login state survive restarts.
+        """
+        if self._playwright is not None:
+            return
+
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        self._playwright = await async_playwright().start()
+
+        self._context = await self._playwright.chromium.launch_persistent_context(
+            user_data_dir=str(self._data_dir),
+            headless=self._headless,
+            viewport={"width": 1280, "height": 800},
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+            ],
         )
 
-    async def _on_page_ready(self, page: Page) -> None:
-        """Wait for ChatGPT's chat interface to load."""
+        self._page = await self._context.new_page()
+        await self._page.goto(CHATGPT_URL, wait_until="domcontentloaded")
+
+        # Wait for the page to be interactive
         try:
-            # Wait for the chat input to appear
-            resolver = LocatorResolver(page)
-            await resolver.resolve(locators.CHAT_INPUT, timeout_ms=15000)
-            logger.info("chatgpt_page_ready")
+            await self._page.get_by_role("textbox").first.wait_for(timeout=15000)
+            logger.info("chatgpt_launched", url=CHATGPT_URL)
         except Exception as e:
-            logger.warning("chatgpt_page_ready_timeout", error=str(e))
+            logger.warning("chatgpt_launch_timeout", error=str(e))
 
-    async def _type_prompt(self, resolver: LocatorResolver, prompt: str) -> None:
-        """Type the prompt into ChatGPT's input field.
+    async def send(self, prompt: str, timeout_ms: int = 60000) -> str:
+        """Send a prompt and wait for the complete response.
 
-        ChatGPT uses a contenteditable div, not a standard input.
-        We use type_text() which simulates keystrokes.
+        Simple flow:
+        1. Find input
+        2. Type prompt
+        3. Press Enter (or click send)
+        4. Wait for response to appear
+        5. Extract response text
+
+        Returns the response text, or empty string on failure.
         """
-        # Focus the input
-        input_locator = await resolver.resolve(locators.CHAT_INPUT, timeout_ms=10000)
-        if input_locator is None:
-            raise RuntimeError("Could not find ChatGPT input field")
+        if self._page is None:
+            raise RuntimeError("Not launched. Call launch() first.")
 
-        await input_locator.click()
-        await asyncio.sleep(0.2)
+        page = self._page
 
-        # Type the prompt
-        await input_locator.fill(prompt)
+        # Step 1: Find and fill input
+        input_el = page.get_by_role("textbox").first
+        await input_el.wait_for(state="visible", timeout=10000)
+        await input_el.click()
+        await input_el.fill(prompt)
         await asyncio.sleep(0.3)
 
-        logger.info("chatgpt_prompt_typed", length=len(prompt))
+        # Step 2: Send (Enter key is more reliable than clicking send button)
+        await input_el.press("Enter")
 
-    async def _click_send(self, resolver: LocatorResolver) -> None:
-        """Click ChatGPT's send button."""
-        clicked = await resolver.click(locators.SEND_BUTTON, timeout_ms=5000)
-        if not clicked:
-            # Fallback: press Enter
-            logger.info("chatgpt_send_button_fallback", method="enter_key")
-            page = resolver._page
-            await page.keyboard.press("Enter")
+        # Step 3: Wait for response
+        # Strategy: wait for the response container to appear and stabilize
+        response_text = await self._wait_for_response(page, timeout_ms)
 
-    async def _parse_stream(
-        self, page: Page, resolver: LocatorResolver
-    ) -> AsyncIterator[str]:
-        """Parse ChatGPT's streaming response.
+        logger.info("chatgpt_response_received", length=len(response_text))
+        return response_text
 
-        ChatGPT streams by updating the DOM. We monitor the response
-        container for text changes.
+    async def health_check(self) -> bool:
+        """Check if ChatGPT is accessible and interactive."""
+        if self._page is None or self._page.is_closed():
+            return False
+
+        try:
+            # Check if we can find the input
+            input_el = self._page.get_by_role("textbox").first
+            await input_el.wait_for(state="visible", timeout=5000)
+            return True
+        except Exception:
+            return False
+
+    async def close(self) -> None:
+        """Shut down the browser."""
+        try:
+            if self._context:
+                await self._context.close()
+        except Exception:
+            pass
+        if self._playwright:
+            await self._playwright.stop()
+        self._playwright = None
+        self._context = None
+        self._page = None
+        logger.info("chatgpt_closed")
+
+    @property
+    def is_ready(self) -> bool:
+        return self._page is not None and not self._page.is_closed()
+
+    async def _wait_for_response(self, page: Page, timeout_ms: int) -> str:
+        """Wait for ChatGPT's response to complete and extract text.
 
         Strategy:
         1. Wait for response container to appear
-        2. Poll for text changes
-        3. Yield new tokens as they appear
-        4. Stop when streaming indicator disappears
+        2. Poll until streaming stops (no text changes for 2 seconds)
+        3. Extract final text
         """
+        start = time.monotonic()
         last_text = ""
-        no_change_count = 0
-        max_no_change = 10  # Stop after 10 polls with no change
+        stable_count = 0
+        stable_threshold = 4  # 4 polls with no change = done (4 * 500ms = 2s)
 
-        # Wait for response to start
+        # Wait a moment for response to start
         await asyncio.sleep(1.0)
 
-        while no_change_count < max_no_change:
+        while (time.monotonic() - start) * 1000 < timeout_ms:
             # Get current response text
-            current_text = await self._get_response_text(resolver)
+            current_text = await self._extract_latest_response(page)
 
             if current_text and current_text != last_text:
-                # Extract new token
-                new_text = current_text[len(last_text):]
-                if new_text:
-                    yield new_text
-                    last_text = current_text
-                    no_change_count = 0
-            else:
-                no_change_count += 1
+                last_text = current_text
+                stable_count = 0
+            elif current_text:
+                stable_count += 1
 
             # Check if streaming is done
-            is_streaming = await resolver.is_visible(locators.STREAMING_INDICATOR, timeout_ms=1000)
-            if not is_streaming and no_change_count >= 3:
-                # No streaming indicator and no text changes — done
+            if stable_count >= stable_threshold:
                 break
 
-            await asyncio.sleep(0.3)
+            # Check for stop button (indicates streaming)
+            try:
+                stop_btn = page.locator("[data-testid='stop-button']")
+                if await stop_btn.count() == 0 and stable_count >= 2:
+                    # No stop button and text is stable — done
+                    break
+            except Exception:
+                pass
 
-        # Final check — get any remaining text
-        final_text = await self._get_response_text(resolver)
-        if final_text and final_text != last_text:
-            yield final_text[len(last_text):]
+            await asyncio.sleep(0.5)
 
-    async def _get_response_text(self, resolver: LocatorResolver) -> str:
-        """Extract the current response text from the page."""
-        text = await resolver.get_text(locators.RESPONSE_CONTAINER, timeout_ms=2000)
-        return text or ""
+        return last_text
+
+    async def _extract_latest_response(self, page: Page) -> str:
+        """Extract the latest assistant response from the page.
+
+        Tries multiple selectors (fallback chain).
+        """
+        selectors = [
+            "[data-message-author-role='assistant']:last-of-type",
+            ".markdown.prose:last-of-type",
+            "[data-testid='assistant-message']:last-of-type",
+        ]
+
+        for selector in selectors:
+            try:
+                elements = page.locator(selector)
+                count = await elements.count()
+                if count > 0:
+                    text = await elements.nth(count - 1).text_content()
+                    if text and len(text.strip()) > 0:
+                        return text.strip()
+            except Exception:
+                continue
+
+        return ""
