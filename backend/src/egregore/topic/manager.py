@@ -20,6 +20,7 @@ import structlog
 
 from egregore.providers.browser_manager import BrowserManager
 from egregore.providers.cdp_transport import CdpTransport
+from egregore.synthesis.store import ResponseStore
 from egregore.topic.events import TopicEventStore, TopicEventType
 from egregore.topic.models import Topic
 from egregore.topic.runtime import TopicRuntime, TopicState
@@ -46,11 +47,13 @@ class TopicManager:
         store: TopicStore,
         event_store: TopicEventStore,
         browser_manager: BrowserManager,
+        response_store: ResponseStore | None = None,
     ) -> None:
         self._transport = transport
         self._store = store
         self._events = event_store
         self._browser_manager = browser_manager
+        self._response_store = response_store
         self._runtimes: dict[str, TopicRuntime] = {}  # topic_id -> runtime
 
     async def create(self, title: str, providers: list[str]) -> Topic:
@@ -103,6 +106,12 @@ class TopicManager:
             except Exception as e:
                 results.append(SendResult(provider=provider, content="", success=False, latency_ms=0, url=url))
                 self._events.record(topic_id, TopicEventType.PROVIDER_FAILED, provider, str(e))
+
+        # Save raw responses for future synthesis
+        if self._response_store:
+            response_dict = {r.provider: r.content for r in results if r.success}
+            if response_dict:
+                self._response_store.save(topic_id, prompt, response_dict)
 
         return results
 

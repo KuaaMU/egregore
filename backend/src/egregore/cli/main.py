@@ -33,6 +33,7 @@ from pathlib import Path
 
 from egregore.providers.bootstrap import ensure_browser
 from egregore.providers.cdp_transport import CdpTransport
+from egregore.synthesis.store import ResponseStore
 from egregore.topic.events import TopicEventStore
 from egregore.topic.manager import TopicManager
 from egregore.topic.models import Topic
@@ -216,7 +217,8 @@ async def run(args: argparse.Namespace) -> None:
 
     transport = CdpTransport()
     browser_manager = transport._browser_manager
-    manager = TopicManager(transport, store, event_store, browser_manager)
+    response_store = ResponseStore()
+    manager = TopicManager(transport, store, event_store, browser_manager, response_store)
 
     try:
         await transport.connect()
