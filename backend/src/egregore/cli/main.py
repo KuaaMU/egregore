@@ -120,9 +120,13 @@ def resolve_topic(store: TopicStore, identifier: str | None) -> Topic | None:
         print(f"Ambiguous ID '{identifier}': {[t.id for t in matches]}", file=sys.stderr)
         return None
 
-    # Exact title
+    # Exact title (only if unique)
     matches = [t for t in topics if t.title.lower() == identifier.lower()]
     if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        # Multiple same-name topics — return most recent
+        print(f"Multiple '{identifier}' found, using most recent (ID: {matches[0].id})", file=sys.stderr)
         return matches[0]
 
     # Partial title
@@ -130,7 +134,9 @@ def resolve_topic(store: TopicStore, identifier: str | None) -> Topic | None:
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        print(f"Ambiguous title '{identifier}': {[t.title for t in matches]}", file=sys.stderr)
+        print(f"Ambiguous '{identifier}': use ID prefix instead", file=sys.stderr)
+        for t in matches:
+            print(f"  {t.id}  {t.title}", file=sys.stderr)
         return None
 
     print(f"Topic '{identifier}' not found.", file=sys.stderr)
