@@ -10,16 +10,16 @@
   --bg: #0a0a0a; --surface: #141414; --border: #262626;
   --text: #e5e5e5; --dim: #737373; --accent: #8b5cf6;
   --green: #22c55e; --red: #ef4444; --yellow: #eab308;
+  --user-bg: #1e1b4b; --provider-bg: #141414;
 }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; }
-a { color: var(--accent); text-decoration: none; }
 
 /* Sidebar */
-.sidebar { width: 260px; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.sidebar { width: 260px; border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
 .sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
 .sidebar-header h1 { font-size: 18px; font-weight: 600; }
 .sidebar-header p { font-size: 12px; color: var(--dim); margin-top: 4px; }
-.new-btn { width: 100%; padding: 8px; margin: 12px 16px; width: calc(100% - 32px); background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 13px; }
+.new-btn { padding: 8px; margin: 12px 16px; width: calc(100% - 32px); background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 13px; }
 .new-btn:hover { border-color: var(--accent); }
 .topic-list { flex: 1; overflow-y: auto; padding: 8px; }
 .topic-item { padding: 10px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; }
@@ -29,7 +29,7 @@ a { color: var(--accent); text-decoration: none; }
 .topic-meta { font-size: 11px; color: var(--dim); margin-top: 2px; }
 
 /* Main */
-.main { flex: 1; display: flex; flex-direction: column; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .main-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
 .main-header h2 { font-size: 16px; font-weight: 600; }
 .header-actions { display: flex; gap: 8px; }
@@ -37,29 +37,47 @@ a { color: var(--accent); text-decoration: none; }
 .header-actions button:hover { color: var(--text); border-color: var(--dim); }
 .header-actions button.danger:hover { color: var(--red); border-color: var(--red); }
 
-/* Content */
-.content { flex: 1; overflow-y: auto; padding: 24px; }
+/* Chat area */
+.chat-area { flex: 1; overflow-y: auto; padding: 24px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--dim); }
 .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
 .empty-state p { font-size: 14px; }
 
-/* Response cards */
-.response-section { margin-bottom: 24px; }
-.response-section h3 { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
-.provider-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
-.provider-header { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
-.provider-header:hover { background: rgba(255,255,255,0.02); }
-.provider-name { font-size: 14px; font-weight: 500; }
-.provider-meta { display: flex; gap: 8px; align-items: center; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+/* Messages */
+.message { margin-bottom: 16px; max-width: 85%; }
+.message.user { margin-left: auto; }
+.message-bubble { padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.message.user .message-bubble { background: var(--user-bg); border: 1px solid #312e81; border-radius: 12px 12px 4px 12px; }
+.message.provider .message-bubble { background: var(--provider-bg); border: 1px solid var(--border); border-radius: 12px 12px 12px 4px; }
+.message-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.provider-tag { font-size: 12px; font-weight: 600; color: var(--accent); }
+.badge { font-size: 10px; padding: 2px 6px; border-radius: 8px; }
 .badge-ok { background: rgba(34,197,94,0.15); color: var(--green); }
 .badge-fail { background: rgba(239,68,68,0.15); color: var(--red); }
 .badge-time { background: rgba(255,255,255,0.05); color: var(--dim); }
-.provider-summary { padding: 0 16px 12px; font-size: 13px; color: var(--dim); line-height: 1.5; }
-.provider-full { padding: 0 16px 16px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; display: none; border-top: 1px solid var(--border); margin-top: 8px; padding-top: 12px; }
-.provider-card.expanded .provider-full { display: block; }
-.chevron { transition: transform 0.2s; font-size: 12px; color: var(--dim); }
+
+/* Provider grid */
+.provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+@media (max-width: 800px) { .provider-grid { grid-template-columns: 1fr; } }
+.provider-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.2s; }
+.provider-card:hover { border-color: var(--dim); }
+.provider-card-header { padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; }
+.provider-card-body { padding: 0 14px 12px; font-size: 13px; color: var(--dim); line-height: 1.5; max-height: 60px; overflow: hidden; }
+.provider-card-full { display: none; padding: 0 14px 14px; font-size: 13px; line-height: 1.6; border-top: 1px solid var(--border); margin-top: 8px; padding-top: 12px; white-space: pre-wrap; }
+.provider-card.expanded .provider-card-full { display: block; }
+.provider-card.expanded .provider-card-body { display: none; }
+.chevron { transition: transform 0.2s; font-size: 11px; color: var(--dim); }
 .provider-card.expanded .chevron { transform: rotate(90deg); }
+
+/* Loading */
+.loading-bubble { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 13px; color: var(--dim); }
+
+/* Images */
+.response-images { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.response-images img { max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid var(--border); }
 
 /* Input */
 .input-area { padding: 16px 24px; border-top: 1px solid var(--border); }
@@ -70,7 +88,7 @@ a { color: var(--accent); text-decoration: none; }
 .input-row button:hover { opacity: 0.9; }
 .input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Create modal */
+/* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; }
 .modal-overlay.show { display: flex; }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 400px; }
@@ -84,16 +102,10 @@ a { color: var(--accent); text-decoration: none; }
 .modal-actions button { padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .btn-cancel { background: var(--surface); border: 1px solid var(--border); color: var(--dim); }
 .btn-create { background: var(--accent); border: none; color: white; }
-
-/* Loading */
-.loading { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; padding: 16px; }
-.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
 
-<!-- Sidebar -->
 <div class="sidebar">
   <div class="sidebar-header">
     <h1>⬡ Egregore</h1>
@@ -103,7 +115,6 @@ a { color: var(--accent); text-decoration: none; }
   <div class="topic-list" id="topicList"></div>
 </div>
 
-<!-- Main -->
 <div class="main">
   <div class="main-header">
     <h2 id="mainTitle">Select a topic</h2>
@@ -113,7 +124,7 @@ a { color: var(--accent); text-decoration: none; }
       <button class="danger" onclick="deleteTopic()">Delete</button>
     </div>
   </div>
-  <div class="content" id="content">
+  <div class="chat-area" id="chatArea">
     <div class="empty-state">
       <div class="icon">⬡</div>
       <p>Create a topic to get started</p>
@@ -127,7 +138,6 @@ a { color: var(--accent); text-decoration: none; }
   </div>
 </div>
 
-<!-- Create Modal -->
 <div class="modal-overlay" id="createModal">
   <div class="modal">
     <h3>New Topic</h3>
@@ -157,6 +167,7 @@ async function api(path, opts = {}) {
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return resp.json();
 }
 
@@ -165,7 +176,7 @@ async function loadTopics() {
   const list = document.getElementById('topicList');
   list.innerHTML = topics.map(t =>
     `<div class="topic-item ${currentTopic?.id === t.id ? 'active' : ''}" onclick="selectTopic('${t.id}')">
-      <div class="topic-title">${t.title}</div>
+      <div class="topic-title">${esc(t.title)}</div>
       <div class="topic-meta">${t.providers.join(', ')}</div>
     </div>`
   ).join('');
@@ -183,33 +194,48 @@ async function selectTopic(id) {
 
 async function loadResponses(id) {
   const responses = await api(`/api/topics/${id}/responses`);
-  const content = document.getElementById('content');
+  const area = document.getElementById('chatArea');
 
   if (!responses.length) {
-    content.innerHTML = '<div class="empty-state"><p>No responses yet. Send a prompt.</p></div>';
+    area.innerHTML = '<div class="empty-state"><p>No responses yet. Send a prompt.</p></div>';
     return;
   }
 
-  // Show latest response set
   const latest = responses[responses.length - 1];
-  const providers = Object.entries(latest.responses || {});
+  area.innerHTML = renderConversation(latest.prompt, latest.responses || {});
+  area.scrollTop = area.scrollHeight;
+}
 
-  content.innerHTML = `
-    <div class="response-section">
-      <h3>Responses (${providers.length} providers)</h3>
-      ${providers.map(([pid, text]) => `
-        <div class="provider-card" onclick="this.classList.toggle('expanded')">
-          <div class="provider-header">
-            <span class="provider-name">${pid}</span>
-            <div class="provider-meta">
-              <span class="badge badge-ok">OK</span>
-              <span class="chevron">▶</span>
-            </div>
-          </div>
-          <div class="provider-summary">${text.substring(0, 150)}...</div>
-          <div class="provider-full">${text}</div>
+function renderConversation(prompt, responses) {
+  const providers = Object.entries(responses);
+  return `
+    <div class="message user">
+      <div class="message-bubble">${esc(prompt)}</div>
+    </div>
+    <div class="provider-grid">
+      ${providers.map(([pid, text]) => renderProviderCard(pid, text, true)).join('')}
+    </div>
+  `;
+}
+
+function renderProviderCard(pid, text, success, latencyMs, images) {
+  const latency = latencyMs ? `<span class="badge badge-time">${latencyMs.toFixed(0)}ms</span>` : '';
+  const status = success ? '<span class="badge badge-ok">OK</span>' : '<span class="badge badge-fail">FAIL</span>';
+  const imgHtml = images?.length ? `<div class="response-images">${images.map(s => `<img src="${esc(s)}" alt="generated">`).join('')}</div>` : '';
+  const summary = success ? esc(text.substring(0, 120)) + '...' : 'Error';
+  const full = success ? esc(text) : 'Request failed';
+
+  return `
+    <div class="provider-card" onclick="this.classList.toggle('expanded')">
+      <div class="provider-card-header">
+        <span class="provider-tag">${esc(pid)}</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${status}${latency}
+          <span class="chevron">▶</span>
         </div>
-      `).join('')}
+      </div>
+      <div class="provider-card-body">${summary}</div>
+      <div class="provider-card-full">${full}${imgHtml}</div>
     </div>
   `;
 }
@@ -222,50 +248,47 @@ async function sendPrompt() {
   const btn = document.getElementById('sendBtn');
   btn.disabled = true;
   btn.textContent = 'Sending...';
+  input.value = '';
 
-  const content = document.getElementById('content');
-  content.innerHTML = '<div class="loading"><div class="spinner"></div> Sending to all providers...</div>';
+  const area = document.getElementById('chatArea');
+
+  // Show user message + loading
+  area.innerHTML += `
+    <div class="message user">
+      <div class="message-bubble">${esc(prompt)}</div>
+    </div>
+    <div class="loading-bubble" id="loadingIndicator">
+      <div class="spinner"></div>
+      <span class="loading-text">Sending to ${currentTopic.providers.length} providers...</span>
+    </div>
+  `;
+  area.scrollTop = area.scrollHeight;
 
   try {
     const results = await api(`/api/topics/${currentTopic.id}/send`, {method: 'POST', body: {prompt}});
-    input.value = '';
 
-    // Show results
-    content.innerHTML = `
-      <div class="response-section">
-        <h3>Prompt</h3>
-        <div class="provider-card">
-          <div class="provider-header">
-            <span class="provider-name" style="color:var(--accent)">You</span>
-          </div>
-          <div class="provider-summary">${prompt}</div>
-        </div>
-      </div>
-      <div class="response-section">
-        <h3>Responses (${results.filter(r => r.success).length}/${results.length})</h3>
-        ${results.map(r => `
-          <div class="provider-card" onclick="this.classList.toggle('expanded')">
-            <div class="provider-header">
-              <span class="provider-name">${r.provider}</span>
-              <div class="provider-meta">
-                <span class="badge ${r.success ? 'badge-ok' : 'badge-fail'}">${r.success ? 'OK' : 'FAIL'}</span>
-                <span class="badge badge-time">${r.latency_ms?.toFixed(0) || 0}ms</span>
-                <span class="chevron">▶</span>
-              </div>
-            </div>
-            <div class="provider-summary">${r.success ? r.content.substring(0, 150) + '...' : 'Error'}</div>
-            <div class="provider-full">${r.success ? r.content : 'Request failed'}</div>
-          </div>
-        `).join('')}
-      </div>
-    `;
+    // Remove loading
+    document.getElementById('loadingIndicator')?.remove();
+
+    // Show provider grid
+    const grid = document.createElement('div');
+    grid.className = 'provider-grid';
+    grid.innerHTML = results.map(r =>
+      renderProviderCard(r.provider, r.content, r.success, r.latency_ms, r.images)
+    ).join('');
+    area.appendChild(grid);
+    area.scrollTop = area.scrollHeight;
+
   } catch (e) {
-    content.innerHTML = `<div class="empty-state"><p style="color:var(--red)">Error: ${e.message}</p></div>`;
+    document.getElementById('loadingIndicator')?.remove();
+    area.innerHTML += `<div class="message provider"><div class="message-bubble" style="color:var(--red)">Error: ${esc(e.message)}</div></div>`;
   } finally {
     btn.disabled = false;
     btn.textContent = 'Send';
   }
 }
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
 function showCreate() { document.getElementById('createModal').classList.add('show'); document.getElementById('newTitle').focus(); }
 function hideCreate() { document.getElementById('createModal').classList.remove('show'); }
@@ -275,7 +298,6 @@ async function createTopic() {
   if (!title) return;
   const providers = [...document.querySelectorAll('.checkbox-group input:checked')].map(cb => cb.value);
   if (!providers.length) return;
-
   await api('/api/topics', {method: 'POST', body: {title, providers}});
   document.getElementById('newTitle').value = '';
   hideCreate();
@@ -300,11 +322,10 @@ async function deleteTopic() {
   document.getElementById('mainTitle').textContent = 'Select a topic';
   document.getElementById('headerActions').style.display = 'none';
   document.getElementById('inputArea').style.display = 'none';
-  document.getElementById('content').innerHTML = '<div class="empty-state"><div class="icon">⬡</div><p>Create a topic to get started</p></div>';
+  document.getElementById('chatArea').innerHTML = '<div class="empty-state"><div class="icon">⬡</div><p>Create a topic to get started</p></div>';
   await loadTopics();
 }
 
-// Init
 loadTopics();
 </script>
 </body>

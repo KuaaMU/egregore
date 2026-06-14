@@ -1,19 +1,13 @@
-"""Egregore Web UI — minimal, clean, Progressive Disclosure.
-
-Architecture:
-    FastAPI → REST API → TopicManager → Providers
-    Static HTML → fetch() → REST API
-
-No framework. No React. Just HTML + CSS + fetch().
-"""
+"""Egregore Web UI — minimal, clean, Progressive Disclosure."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from egregore.providers.bootstrap import ensure_browser
@@ -28,10 +22,8 @@ DB_PATH = Path.home() / ".egregore" / "topics.db"
 
 
 def create_web_app() -> FastAPI:
-    """Create the Egregore web application."""
     app = FastAPI(title="Egregore", version="0.4.0")
 
-    # Shared state
     store = TopicStore(DB_PATH)
     event_store = TopicEventStore(store._conn)
     response_store = ResponseStore()
@@ -42,7 +34,6 @@ def create_web_app() -> FastAPI:
     @app.on_event("startup")
     async def startup():
         await ensure_browser()
-        # Force reconnect (bootstrap may have restarted Chrome)
         transport._browser_manager._browser = None
         transport._browser_manager._playwright = None
         await transport.connect()
@@ -52,13 +43,9 @@ def create_web_app() -> FastAPI:
         await transport.close()
         store.close()
 
-    # === Pages ===
-
     @app.get("/", response_class=HTMLResponse)
     async def index():
         return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-
-    # === API ===
 
     @app.get("/api/topics")
     async def list_topics():
@@ -83,18 +70,84 @@ def create_web_app() -> FastAPI:
         prompt = body.get("prompt", "")
         if not prompt:
             return {"error": "No prompt"}
-        # Auto-reopen if not in runtime
+
+        # Auto-reopen if needed
         try:
             await manager.reopen(topic_id)
         except Exception:
             pass
-        results = await manager.send(topic_id, prompt, timeout_ms=60000)
-        return [{
-            "provider": r.provider,
-            "content": r.content,
-            "success": r.success,
-            "latency_ms": r.latency_ms,
-        } for r in results]
+
+        # Get topic info
+        topic = store.get(topic_id)
+        if not topic:
+            return {"error": "Topic not found"}
+
+        # Send to ALL providers in parallel
+        from egregore.providers.cdp_transport import CdpTransport
+
+        async def send_one(provider: str):
+            url = topic.get_url(provider) or ""
+            try:
+                page = await transport._browser_manager.get_page(url)
+                old_response = await transport._extract_latest_response(page)
+                old_content_len = await transport._get_content_length(page)
+
+                # Type and send
+                input_el = page.get_by_role("textbox").first
+                await input_el.wait_for(state="visible", timeout=10000)
+                await input_el.click()
+                await asyncio.sleep(0.2)
+                await page.keyboard.press("Control+a")
+                await page.keyboard.type(prompt, delay=10)
+                await asyncio.sleep(0.3)
+                await page.keyboard.press("Enter")
+
+                # Wait for response
+                content = await transport._wait_for_response(page, 60000, old_response, old_content_len)
+
+                # Detect images
+                images = []
+                try:
+                    imgs = page.locator("img[src*='dalle'], img[src*='generated'], img[alt*='generated']")
+                    count = await imgs.count()
+                    for i in range(min(count, 5)):
+                        src = await imgs.nth(i).get_attribute("src")
+                        if src:
+                            images.append(src)
+                except Exception:
+                    pass
+
+                return {
+                    "provider": provider,
+                    "content": content,
+                    "success": len(content) > 0,
+                    "images": images,
+                }
+            except Exception as e:
+                return {"provider": provider, "content": "", "success": False, "error": str(e), "images": []}
+
+        # Run all providers in parallel
+        tasks = [send_one(p) for p in topic.providers]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results
+        processed = []
+        for r in results:
+            if isinstance(r, Exception):
+                processed.append({"provider": "unknown", "content": "", "success": False, "error": str(r), "images": []})
+            else:
+                processed.append(r)
+
+        # Save responses
+        response_dict = {r["provider"]: r["content"] for r in processed if r["success"]}
+        if response_dict:
+            response_store.save(topic_id, prompt, response_dict)
+
+        # Update topic access time
+        topic.touch()
+        store.save(topic)
+
+        return processed
 
     @app.post("/api/topics/{topic_id}/close")
     async def close_topic(topic_id: str):
@@ -113,8 +166,7 @@ def create_web_app() -> FastAPI:
 
     @app.get("/api/topics/{topic_id}/events")
     async def get_events(topic_id: str):
-        events = event_store.get_events(topic_id, limit=50)
-        return events
+        return event_store.get_events(topic_id, limit=50)
 
     @app.get("/api/topics/{topic_id}/responses")
     async def get_responses(topic_id: str):
