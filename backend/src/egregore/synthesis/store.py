@@ -48,7 +48,7 @@ class ResponseStore:
             "response_lengths": {pid: len(text) for pid, text in responses.items()},
         }
 
-        filepath.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        filepath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         return filepath
 
     def load(self, topic_id: str) -> list[dict]:
@@ -60,7 +60,7 @@ class ResponseStore:
         results = []
         for f in sorted(topic_dir.glob("*.json")):
             try:
-                results.append(json.loads(f.read_text()))
+                results.append(json.loads(f.read_text(encoding="utf-8")))
             except Exception:
                 continue
         return results
