@@ -56,12 +56,20 @@ class TopicManager:
     async def create(self, title: str, providers: list[str]) -> Topic:
         """Create a topic and open pages."""
         topic = Topic(title=title, providers=providers)
+
+        # Set base URLs for each provider
+        for provider in providers:
+            topic.set_url(provider, self._provider_url(provider))
+
         self._store.save(topic)
 
         # Create runtime and open pages
         runtime = TopicRuntime(topic, self._browser_manager, self._events)
         await runtime.open_pages()
         self._runtimes[topic.id] = runtime
+
+        # Save again with actual conversation URLs
+        self._store.save(topic)
 
         self._events.record(topic.id, TopicEventType.CREATED, detail=title)
         logger.info("topic_created", topic=topic.id, title=title, providers=providers)
@@ -142,6 +150,16 @@ class TopicManager:
                 "send_count": runtime.metrics.send_count,
             }
         return self._events.get_stats(topic_id)
+
+    def _provider_url(self, provider: str) -> str:
+        urls = {
+            "chatgpt": "https://chatgpt.com/",
+            "grok": "https://grok.com/",
+            "kimi": "https://kimi.moonshot.cn/",
+            "qwen": "https://tongyi.aliyun.com/qianwen/",
+            "doubao": "https://www.doubao.com/",
+        }
+        return urls.get(provider, "")
 
     def _get_runtime(self, topic_id: str) -> TopicRuntime:
         runtime = self._runtimes.get(topic_id)

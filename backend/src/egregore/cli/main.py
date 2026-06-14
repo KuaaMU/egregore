@@ -75,7 +75,7 @@ async def run(args: argparse.Namespace) -> None:
     transport = CdpTransport()
     store = TopicStore(DB_PATH)
     event_store = TopicEventStore(store._conn)
-    browser_manager = BrowserManager()
+    browser_manager = transport._browser_manager  # Use the same instance
     manager = TopicManager(transport, store, event_store, browser_manager)
 
     try:
@@ -101,6 +101,8 @@ async def run(args: argparse.Namespace) -> None:
                     print(f"{pin}{t.id}  {t.title}  [{providers}]")
 
         elif args.command == "send":
+            # Auto-reopen if topic is not in runtime
+            await manager.reopen(args.topic_id)
             print(f"Sending to {args.topic_id}...")
             results = await manager.send(args.topic_id, args.prompt, args.timeout)
             for r in results:
