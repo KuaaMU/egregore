@@ -27,7 +27,7 @@ class Topic:
     This is the core entity. Not Provider. Not Message. Topic.
     """
 
-    id: str = field(default_factory=lambda: uuid4().hex[:12])
+    id: str = field(default_factory=lambda: uuid4().hex[:6])
     title: str = ""
     providers: list[str] = field(default_factory=list)
     urls: dict[str, str] = field(default_factory=dict)  # provider -> conversation_url

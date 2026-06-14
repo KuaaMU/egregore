@@ -1,81 +1,212 @@
-"""Egregore CLI — thin adapter over TopicManager.
-
-No business logic here. Just:
-    argv → TopicManager → stdout
+"""Egregore CLI — optimized for humans and agents.
 
 Usage:
-    uv run python -m egregore.cli create "Redis Cache" --providers chatgpt grok kimi
-    uv run python -m egregore.cli list
-    uv run python -m egregore.cli send <topic_id> "How does Redis cache work?"
-    uv run python -m egregore.cli close <topic_id>
-    uv run python -m egregore.cli reopen <topic_id>
-    uv run python -m egregore.cli events <topic_id>
-    uv run python -m egregore.cli stats <topic_id>
+    # Create
+    egregore create "Redis Cache" --providers chatgpt grok
+
+    # Send (by title)
+    egregore send "Redis Cache" "How does Redis cache work?"
+
+    # Send (last topic)
+    egregore send "How does Redis cache work?"
+
+    # List
+    egregore list
+    egregore list --json
+
+    # Close / Reopen / Delete (by title or ID)
+    egregore close "Redis Cache"
+    egregore reopen "Redis Cache"
+
+    # Events / Stats
+    egregore events "Redis Cache"
+    egregore stats "Redis Cache" --json
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
-from egregore.providers.browser_manager import BrowserManager
 from egregore.providers.cdp_transport import CdpTransport
 from egregore.topic.events import TopicEventStore
 from egregore.topic.manager import TopicManager
+from egregore.topic.models import Topic
 from egregore.topic.store import TopicStore
 
 DB_PATH = Path.home() / ".egregore" / "topics.db"
 
 
 def create_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="egregore", description="Egregore — Topic Runtime CLI")
+    parser = argparse.ArgumentParser(
+        prog="egregore",
+        description="Egregore — Topic Runtime for Collective Intelligence",
+    )
     sub = parser.add_subparsers(dest="command")
 
+    def add_json_flag(p):
+        p.add_argument("--json", action="store_true", help="JSON output")
+
     # create
-    p_create = sub.add_parser("create", help="Create a new topic")
-    p_create.add_argument("title", help="Topic title")
-    p_create.add_argument("--providers", nargs="+", default=["chatgpt", "grok", "kimi"], help="Provider names")
+    p = sub.add_parser("create", help="Create a new topic")
+    p.add_argument("title", help="Topic title")
+    p.add_argument("--providers", nargs="+", default=["chatgpt", "grok", "kimi"])
+    add_json_flag(p)
 
     # list
-    sub.add_parser("list", help="List all topics")
+    p = sub.add_parser("list", help="List all topics")
+    add_json_flag(p)
 
     # send
-    p_send = sub.add_parser("send", help="Send a prompt to a topic")
-    p_send.add_argument("topic_id", help="Topic ID")
-    p_send.add_argument("prompt", help="Prompt text")
-    p_send.add_argument("--timeout", type=int, default=60000, help="Timeout in ms")
+    p = sub.add_parser("send", help="Send a prompt")
+    p.add_argument("topic_or_prompt", nargs="?", help="Topic title/ID or prompt")
+    p.add_argument("prompt", nargs="?", help="Prompt text")
+    p.add_argument("--timeout", type=int, default=60000)
+    add_json_flag(p)
 
     # close
-    p_close = sub.add_parser("close", help="Close a topic's pages")
-    p_close.add_argument("topic_id", help="Topic ID")
+    p = sub.add_parser("close", help="Close a topic")
+    p.add_argument("topic", nargs="?", help="Topic title/ID")
+    add_json_flag(p)
 
     # reopen
-    p_reopen = sub.add_parser("reopen", help="Reopen a topic from saved URLs")
-    p_reopen.add_argument("topic_id", help="Topic ID")
+    p = sub.add_parser("reopen", help="Reopen a topic")
+    p.add_argument("topic", nargs="?", help="Topic title/ID")
+    add_json_flag(p)
 
     # events
-    p_events = sub.add_parser("events", help="Show events for a topic")
-    p_events.add_argument("topic_id", help="Topic ID")
-    p_events.add_argument("--limit", type=int, default=20, help="Max events to show")
+    p = sub.add_parser("events", help="Show events")
+    p.add_argument("topic", nargs="?", help="Topic title/ID")
+    p.add_argument("--limit", type=int, default=20)
+    add_json_flag(p)
 
     # stats
-    p_stats = sub.add_parser("stats", help="Show stats for a topic")
-    p_stats.add_argument("topic_id", help="Topic ID")
+    p = sub.add_parser("stats", help="Show stats")
+    p.add_argument("topic", nargs="?", help="Topic title/ID")
+    add_json_flag(p)
 
     # delete
-    p_delete = sub.add_parser("delete", help="Delete a topic")
-    p_delete.add_argument("topic_id", help="Topic ID")
+    p = sub.add_parser("delete", help="Delete a topic")
+    p.add_argument("topic", nargs="?", help="Topic title/ID")
+    add_json_flag(p)
 
     return parser
 
 
+def resolve_topic(store: TopicStore, identifier: str | None) -> Topic | None:
+    """Resolve a topic by title, ID prefix, or None (last topic)."""
+    topics = store.list_all()
+    if not topics:
+        return None
+
+    if identifier is None:
+        return topics[0]
+
+    # Exact ID
+    for t in topics:
+        if t.id == identifier:
+            return t
+
+    # ID prefix
+    matches = [t for t in topics if t.id.startswith(identifier)]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        print(f"Ambiguous ID '{identifier}': {[t.id for t in matches]}", file=sys.stderr)
+        return None
+
+    # Exact title
+    matches = [t for t in topics if t.title.lower() == identifier.lower()]
+    if len(matches) == 1:
+        return matches[0]
+
+    # Partial title
+    matches = [t for t in topics if identifier.lower() in t.title.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        print(f"Ambiguous title '{identifier}': {[t.title for t in matches]}", file=sys.stderr)
+        return None
+
+    print(f"Topic '{identifier}' not found.", file=sys.stderr)
+    return None
+
+
+def topic_to_dict(t: Topic) -> dict:
+    return {
+        "id": t.id,
+        "title": t.title,
+        "providers": t.providers,
+        "urls": t.urls,
+        "pinned": t.pinned,
+        "created_at": t.created_at.isoformat(),
+        "last_accessed": t.last_accessed.isoformat(),
+    }
+
+
+def get_json_flag(args) -> bool:
+    return getattr(args, "json", False)
+
+
 async def run(args: argparse.Namespace) -> None:
-    transport = CdpTransport()
+    use_json = get_json_flag(args)
     store = TopicStore(DB_PATH)
     event_store = TopicEventStore(store._conn)
-    browser_manager = transport._browser_manager  # Use the same instance
+
+    # === Commands that don't need CDP ===
+
+    if args.command == "list":
+        topics = store.list_all()
+        if use_json:
+            print(json.dumps([topic_to_dict(t) for t in topics], ensure_ascii=False))
+        else:
+            if not topics:
+                print("No topics.")
+            else:
+                for t in topics:
+                    pin = " *" if t.pinned else ""
+                    providers = ", ".join(t.providers)
+                    print(f"  {t.id}  {t.title}{pin}  [{providers}]")
+        store.close()
+        return
+
+    if args.command == "events":
+        topic = resolve_topic(store, args.topic)
+        if topic:
+            events = event_store.get_events(topic.id, args.limit)
+            if use_json:
+                print(json.dumps(events, ensure_ascii=False, default=str))
+            else:
+                if not events:
+                    print("No events.")
+                else:
+                    for e in events:
+                        prov = f" [{e['provider']}]" if e['provider'] else ""
+                        detail = f" — {e['detail'][:50]}" if e['detail'] else ""
+                        print(f"  {e['timestamp'][:19]}  {e['event_type']}{prov}{detail}")
+        store.close()
+        return
+
+    if args.command == "stats":
+        topic = resolve_topic(store, args.topic)
+        if topic:
+            stats = event_store.get_stats(topic.id)
+            if use_json:
+                print(json.dumps(stats, ensure_ascii=False))
+            else:
+                print(f"Stats for {topic.title}:")
+                for k, v in stats.items():
+                    print(f"  {k}: {v}")
+        store.close()
+        return
+
+    # === Commands that need CDP ===
+
+    transport = CdpTransport()
+    browser_manager = transport._browser_manager
     manager = TopicManager(transport, store, event_store, browser_manager)
 
     try:
@@ -83,71 +214,76 @@ async def run(args: argparse.Namespace) -> None:
 
         if args.command == "create":
             topic = await manager.create(args.title, args.providers)
-            print(f"Topic created")
-            print(f"  id:        {topic.id}")
-            print(f"  title:     {topic.title}")
-            print(f"  providers: {', '.join(topic.providers)}")
-            for p, url in topic.urls.items():
-                print(f"  {p}: {url}")
-
-        elif args.command == "list":
-            topics = manager.list_topics()
-            if not topics:
-                print("No topics found.")
+            if use_json:
+                print(json.dumps(topic_to_dict(topic), ensure_ascii=False))
             else:
-                for t in topics:
-                    pin = "📌 " if t.pinned else "   "
-                    providers = ", ".join(t.providers) if t.providers else "none"
-                    print(f"{pin}{t.id}  {t.title}  [{providers}]")
+                print(f"Created: {topic.title}")
+                print(f"  ID: {topic.id}")
+                for p in topic.providers:
+                    print(f"  {p}: {topic.get_url(p)}")
 
         elif args.command == "send":
-            # Auto-reopen if topic is not in runtime
-            await manager.reopen(args.topic_id)
-            print(f"Sending to {args.topic_id}...")
-            results = await manager.send(args.topic_id, args.prompt, args.timeout)
-            for r in results:
-                status = "OK" if r.success else "FAIL"
-                print(f"\n[{r.provider}] {status} ({r.latency_ms:.0f}ms)")
-                if r.success:
-                    print(f"  {r.content[:300]}")
-                else:
-                    print(f"  Error: {r.content}")
+            if args.prompt is not None:
+                topic_id = args.topic_or_prompt
+                prompt = args.prompt
+            else:
+                topic_id = None
+                prompt = args.topic_or_prompt
+
+            if not prompt:
+                print("Error: No prompt.", file=sys.stderr)
+                return
+
+            topic = resolve_topic(store, topic_id)
+            if not topic:
+                return
+
+            await manager.reopen(topic.id)
+            results = await manager.send(topic.id, prompt, args.timeout)
+
+            if use_json:
+                out = [{"provider": r.provider, "content": r.content, "success": r.success, "latency_ms": r.latency_ms} for r in results]
+                print(json.dumps(out, ensure_ascii=False))
+            else:
+                for r in results:
+                    status = "OK" if r.success else "FAIL"
+                    print(f"\n[{r.provider}] {status} ({r.latency_ms:.0f}ms)")
+                    if r.success:
+                        print(f"  {r.content[:300]}")
+                    else:
+                        print(f"  Error")
 
         elif args.command == "close":
-            await manager.close(args.topic_id)
-            print(f"Topic {args.topic_id} closed.")
+            topic = resolve_topic(store, args.topic)
+            if topic:
+                await manager.close(topic.id)
+                if use_json:
+                    print(json.dumps({"closed": topic.id}))
+                else:
+                    print(f"Closed: {topic.title}")
 
         elif args.command == "reopen":
-            topic = await manager.reopen(args.topic_id)
-            print(f"Topic {args.topic_id} reopened.")
-            for p in topic.providers:
-                print(f"  {p}: {topic.get_url(p)}")
-
-        elif args.command == "events":
-            events = event_store.get_events(args.topic_id, args.limit)
-            if not events:
-                print("No events found.")
-            else:
-                for e in events:
-                    provider = f" [{e['provider']}]" if e['provider'] else ""
-                    detail = f" — {e['detail'][:60]}" if e['detail'] else ""
-                    print(f"  {e['timestamp'][:19]}  {e['event_type']}{provider}{detail}")
-
-        elif args.command == "stats":
-            stats = manager.get_topic_stats(args.topic_id)
-            if not stats:
-                print("No stats found.")
-            else:
-                print(f"Stats for {args.topic_id}:")
-                for k, v in stats.items():
-                    print(f"  {k}: {v}")
+            topic = resolve_topic(store, args.topic)
+            if topic:
+                await manager.reopen(topic.id)
+                if use_json:
+                    print(json.dumps(topic_to_dict(topic)))
+                else:
+                    print(f"Reopened: {topic.title}")
+                    for p in topic.providers:
+                        print(f"  {p}: {topic.get_url(p)}")
 
         elif args.command == "delete":
-            manager.delete_topic(args.topic_id)
-            print(f"Topic {args.topic_id} deleted.")
+            topic = resolve_topic(store, args.topic)
+            if topic:
+                manager.delete_topic(topic.id)
+                if use_json:
+                    print(json.dumps({"deleted": topic.id}))
+                else:
+                    print(f"Deleted: {topic.title}")
 
         else:
-            print("Unknown command. Use --help for usage.")
+            print("Unknown command. Use --help.")
 
     finally:
         await transport.close()
