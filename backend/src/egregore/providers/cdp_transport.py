@@ -1,12 +1,10 @@
 """CdpTransport — connects to user's Chrome via CDP.
 
-This is the first Transport implementation.
-It attaches to the user's running Chrome instance.
+Uses BrowserManager for page reuse (no new tabs).
+Uses NetworkObserver for metadata extraction.
 
-Usage:
-    transport = CdpTransport()
-    await transport.connect()
-    response = await transport.send("https://chatgpt.com/", "Hello")
+Architecture:
+    CdpTransport → BrowserManager → Chrome → Platform
 """
 
 from __future__ import annotations
@@ -15,25 +13,21 @@ import asyncio
 import time
 
 import structlog
-from playwright.async_api import Page, Playwright, async_playwright
+from playwright.async_api import Page
 
+from egregore.providers.browser_manager import BrowserManager
+from egregore.providers.network_observer import NetworkObserver
 from egregore.providers.transport import TransportResponse, TransportType
 
 logger = structlog.get_logger()
 
-DEFAULT_CDP_URL = "http://127.0.0.1:9222"
-
 
 class CdpTransport:
-    """Transport via Chrome DevTools Protocol.
+    """Transport via Chrome DevTools Protocol. Reuses pages."""
 
-    Attaches to user's running Chrome. Silent, no popup.
-    """
-
-    def __init__(self, cdp_url: str = DEFAULT_CDP_URL) -> None:
-        self._cdp_url = cdp_url
-        self._playwright: Playwright | None = None
-        self._pages: dict[str, Page] = {}  # url -> page
+    def __init__(self, cdp_url: str = "http://127.0.0.1:9222") -> None:
+        self._browser_manager = BrowserManager(cdp_url)
+        self._observers: dict[str, NetworkObserver] = {}
 
     @property
     def transport_type(self) -> TransportType:
@@ -41,36 +35,28 @@ class CdpTransport:
 
     async def connect(self, **kwargs) -> None:
         """Connect to Chrome via CDP."""
-        if self._playwright is not None:
-            return
-
-        self._playwright = await async_playwright().start()
-        try:
-            self._browser = await self._playwright.chromium.connect_over_cdp(self._cdp_url)
-            logger.info("cdp_connected", cdp_url=self._cdp_url)
-        except Exception as e:
-            raise RuntimeError(
-                f"Cannot connect to Chrome at {self._cdp_url}. "
-                f"Start Chrome with: --remote-debugging-port=9222"
-            ) from e
+        await self._browser_manager.connect()
 
     async def send(self, url: str, prompt: str, timeout_ms: int = 60000) -> TransportResponse:
         """Send prompt to a platform and wait for response."""
         start = time.monotonic()
 
         try:
-            page = await self._get_or_create_page(url)
+            # Get or create page (reuses existing tab)
+            page = await self._browser_manager.get_page(url)
+
+            # Start network observer
+            observer = NetworkObserver(page)
+            await observer.start()
+
             old_response = await self._extract_latest_response(page)
-            # For virtual lists (Doubao), also record content length
             old_content_len = await self._get_content_length(page)
 
             # Type and send
-            # Works with both <textarea> and contenteditable DIV (ProseMirror)
             input_el = page.get_by_role("textbox").first
             await input_el.wait_for(state="visible", timeout=10000)
             await input_el.click()
             await asyncio.sleep(0.2)
-            # Select all and replace (handles contenteditable)
             await page.keyboard.press("Control+a")
             await page.keyboard.type(prompt, delay=10)
             await asyncio.sleep(0.3)
@@ -80,10 +66,19 @@ class CdpTransport:
             content = await self._wait_for_response(page, timeout_ms, old_response, old_content_len)
             latency_ms = (time.monotonic() - start) * 1000
 
+            # Get metadata from network
+            meta = observer.get_meta()
+            await observer.stop()
+
             return TransportResponse(
                 content=content,
                 success=len(content) > 0,
                 latency_ms=latency_ms,
+                metadata={
+                    "conversation_id": meta.conversation_id,
+                    "model": meta.model,
+                    "token_usage": meta.token_usage,
+                },
             )
 
         except Exception as e:
@@ -97,7 +92,7 @@ class CdpTransport:
     async def health(self, url: str) -> bool:
         """Check if a platform is accessible."""
         try:
-            page = await self._get_or_create_page(url)
+            page = await self._browser_manager.get_page(url)
             await page.get_by_role("textbox").first.wait_for(state="visible", timeout=5000)
             return True
         except Exception:
@@ -105,32 +100,9 @@ class CdpTransport:
 
     async def close(self) -> None:
         """Disconnect from Chrome."""
-        self._pages.clear()
-        if self._playwright:
-            await self._playwright.stop()
-            self._playwright = None
-        logger.info("cdp_disconnected")
+        await self._browser_manager.close()
 
     # === Private ===
-
-    async def _get_or_create_page(self, url: str) -> Page:
-        """Get existing page for URL or create new one."""
-        if url in self._pages and not self._pages[url].is_closed():
-            return self._pages[url]
-
-        # Find existing tab
-        for context in self._browser.contexts:
-            for page in context.pages:
-                if url in page.url:
-                    self._pages[url] = page
-                    return page
-
-        # Create new tab
-        context = self._browser.contexts[0] if self._browser.contexts else await self._browser.new_context()
-        page = await context.new_page()
-        await page.goto(url, wait_until="domcontentloaded")
-        self._pages[url] = page
-        return page
 
     async def _wait_for_response(self, page: Page, timeout_ms: int, old_response: str, old_content_len: int = 0) -> str:
         start = time.monotonic()
@@ -144,11 +116,10 @@ class CdpTransport:
         while (time.monotonic() - start) * 1000 < timeout_ms:
             current_text = await self._extract_latest_response(page)
 
-            # For virtual lists (content grew but selector returns same text)
+            # Virtual list: content grew
             if not new_response_detected and current_text == old_response and old_content_len > 0:
                 new_len = await self._get_content_length(page)
-                if new_len > old_content_len + 10:  # Content grew significantly
-                    # Extract only the new part
+                if new_len > old_content_len + 10:
                     full_text = await self._get_full_content(page)
                     if full_text and len(full_text) > old_content_len:
                         new_response_detected = True
@@ -186,41 +157,15 @@ class CdpTransport:
 
         return last_text
 
-    async def _get_content_length(self, page: Page) -> int:
-        """Get content length for virtual list detection."""
-        try:
-            el = page.locator("[aria-label='doc_editor']")
-            if await el.count() > 0:
-                text = await el.first.text_content()
-                return len(text)
-        except Exception:
-            pass
-        return 0
-
-    async def _get_full_content(self, page: Page) -> str:
-        """Get full content from virtual list."""
-        try:
-            el = page.locator("[aria-label='doc_editor']")
-            if await el.count() > 0:
-                return await el.first.text_content() or ""
-        except Exception:
-            pass
-        return ""
-
     async def _extract_latest_response(self, page: Page) -> str:
         selectors = [
-            # ChatGPT
             "[data-message-author-role='assistant']:last-of-type",
             ".markdown.prose:last-of-type",
-            # Grok
             "[data-testid*='assistant']:last-of-type",
             ".message-bubble:last-of-type",
-            # Kimi
             ".markdown:last-of-type",
-            # Qwen
             "[class*='markdown']:last-of-type",
             "[class*='answer']:last-of-type",
-            # Doubao — virtual list, use doc_editor
             "[aria-label='doc_editor']",
         ]
         for selector in selectors:
@@ -233,4 +178,23 @@ class CdpTransport:
                         return text.strip()
             except Exception:
                 continue
+        return ""
+
+    async def _get_content_length(self, page: Page) -> int:
+        try:
+            el = page.locator("[aria-label='doc_editor']")
+            if await el.count() > 0:
+                text = await el.first.text_content()
+                return len(text)
+        except Exception:
+            pass
+        return 0
+
+    async def _get_full_content(self, page: Page) -> str:
+        try:
+            el = page.locator("[aria-label='doc_editor']")
+            if await el.count() > 0:
+                return await el.first.text_content() or ""
+        except Exception:
+            pass
         return ""

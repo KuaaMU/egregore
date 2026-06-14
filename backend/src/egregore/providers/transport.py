@@ -42,6 +42,7 @@ class TransportResponse:
     success: bool = True
     error: str | None = None
     latency_ms: float = 0.0
+    metadata: dict = field(default_factory=dict)
 
 
 @runtime_checkable
