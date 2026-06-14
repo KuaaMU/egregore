@@ -63,12 +63,16 @@ class CdpTransport:
             old_response = await self._extract_latest_response(page)
 
             # Type and send
+            # Works with both <textarea> and contenteditable DIV (ProseMirror)
             input_el = page.get_by_role("textbox").first
             await input_el.wait_for(state="visible", timeout=10000)
             await input_el.click()
-            await input_el.fill(prompt)
+            await asyncio.sleep(0.2)
+            # Select all and replace (handles contenteditable)
+            await page.keyboard.press("Control+a")
+            await page.keyboard.type(prompt, delay=10)
             await asyncio.sleep(0.3)
-            await input_el.press("Enter")
+            await page.keyboard.press("Enter")
 
             # Wait for new response
             content = await self._wait_for_response(page, timeout_ms, old_response)
@@ -169,8 +173,14 @@ class CdpTransport:
 
     async def _extract_latest_response(self, page: Page) -> str:
         selectors = [
+            # ChatGPT
             "[data-message-author-role='assistant']:last-of-type",
             ".markdown.prose:last-of-type",
+            # Grok
+            "[data-testid*='assistant']:last-of-type",
+            ".message-bubble:last-of-type",
+            # Generic
+            ".markdown:last-of-type",
         ]
         for selector in selectors:
             try:
