@@ -42,6 +42,9 @@ def create_web_app() -> FastAPI:
     @app.on_event("startup")
     async def startup():
         await ensure_browser()
+        # Force reconnect (bootstrap may have restarted Chrome)
+        transport._browser_manager._browser = None
+        transport._browser_manager._playwright = None
         await transport.connect()
 
     @app.on_event("shutdown")

@@ -50,25 +50,48 @@ class BrowserManager:
                 f"Start Chrome with: --remote-debugging-port=9222"
             ) from e
 
-    async def get_page(self, url: str) -> Page:
-        """Get or create a page for the given URL.
+    async def _ensure_browser(self) -> Browser:
+        """Ensure browser connection is alive. Reconnect if needed."""
+        if self._browser is None:
+            await self.connect()
+            return self._browser
 
-        Reuses existing tab if URL matches. Creates new tab only if needed.
-        """
+        try:
+            # Test if browser is still connected
+            _ = self._browser.contexts
+            return self._browser
+        except Exception:
+            # Connection lost — full reconnect
+            logger.info("browser_reconnecting")
+            self._pages.clear()
+            self._browser = None
+            if self._playwright:
+                try:
+                    await self._playwright.stop()
+                except Exception:
+                    pass
+                self._playwright = None
+            await self.connect()
+            return self._browser
+
+    async def get_page(self, url: str) -> Page:
+        """Get or create a page for the given URL."""
+        browser = await self._ensure_browser()
+
         # Check cache
         if url in self._pages and not self._pages[url].is_closed():
             return self._pages[url]
 
         # Search existing tabs
-        for context in self._browser.contexts:
+        for context in browser.contexts:
             for page in context.pages:
                 if url in page.url:
                     self._pages[url] = page
                     logger.info("page_reused", url=url)
                     return page
 
-        # Create new tab (only when needed)
-        context = self._browser.contexts[0] if self._browser.contexts else await self._browser.new_context()
+        # Create new tab
+        context = browser.contexts[0] if browser.contexts else await browser.new_context()
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded")
         self._pages[url] = page
