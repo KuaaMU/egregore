@@ -83,6 +83,11 @@ def create_web_app() -> FastAPI:
         prompt = body.get("prompt", "")
         if not prompt:
             return {"error": "No prompt"}
+        # Auto-reopen if not in runtime
+        try:
+            await manager.reopen(topic_id)
+        except Exception:
+            pass
         results = await manager.send(topic_id, prompt, timeout_ms=60000)
         return [{
             "provider": r.provider,
