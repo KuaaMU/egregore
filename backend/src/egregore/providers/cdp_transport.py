@@ -61,6 +61,8 @@ class CdpTransport:
         try:
             page = await self._get_or_create_page(url)
             old_response = await self._extract_latest_response(page)
+            # For virtual lists (Doubao), also record content length
+            old_content_len = await self._get_content_length(page)
 
             # Type and send
             # Works with both <textarea> and contenteditable DIV (ProseMirror)
@@ -75,7 +77,7 @@ class CdpTransport:
             await page.keyboard.press("Enter")
 
             # Wait for new response
-            content = await self._wait_for_response(page, timeout_ms, old_response)
+            content = await self._wait_for_response(page, timeout_ms, old_response, old_content_len)
             latency_ms = (time.monotonic() - start) * 1000
 
             return TransportResponse(
@@ -130,7 +132,7 @@ class CdpTransport:
         self._pages[url] = page
         return page
 
-    async def _wait_for_response(self, page: Page, timeout_ms: int, old_response: str) -> str:
+    async def _wait_for_response(self, page: Page, timeout_ms: int, old_response: str, old_content_len: int = 0) -> str:
         start = time.monotonic()
         last_text = old_response
         stable_count = 0
@@ -141,6 +143,19 @@ class CdpTransport:
 
         while (time.monotonic() - start) * 1000 < timeout_ms:
             current_text = await self._extract_latest_response(page)
+
+            # For virtual lists (content grew but selector returns same text)
+            if not new_response_detected and current_text == old_response and old_content_len > 0:
+                new_len = await self._get_content_length(page)
+                if new_len > old_content_len + 10:  # Content grew significantly
+                    # Extract only the new part
+                    full_text = await self._get_full_content(page)
+                    if full_text and len(full_text) > old_content_len:
+                        new_response_detected = True
+                        last_text = full_text[old_content_len:]
+                        stable_count = 0
+                        await asyncio.sleep(0.5)
+                        continue
 
             if not new_response_detected:
                 if current_text and current_text != old_response:
@@ -171,6 +186,27 @@ class CdpTransport:
 
         return last_text
 
+    async def _get_content_length(self, page: Page) -> int:
+        """Get content length for virtual list detection."""
+        try:
+            el = page.locator("[aria-label='doc_editor']")
+            if await el.count() > 0:
+                text = await el.first.text_content()
+                return len(text)
+        except Exception:
+            pass
+        return 0
+
+    async def _get_full_content(self, page: Page) -> str:
+        """Get full content from virtual list."""
+        try:
+            el = page.locator("[aria-label='doc_editor']")
+            if await el.count() > 0:
+                return await el.first.text_content() or ""
+        except Exception:
+            pass
+        return ""
+
     async def _extract_latest_response(self, page: Page) -> str:
         selectors = [
             # ChatGPT
@@ -179,8 +215,13 @@ class CdpTransport:
             # Grok
             "[data-testid*='assistant']:last-of-type",
             ".message-bubble:last-of-type",
-            # Generic
+            # Kimi
             ".markdown:last-of-type",
+            # Qwen
+            "[class*='markdown']:last-of-type",
+            "[class*='answer']:last-of-type",
+            # Doubao — virtual list, use doc_editor
+            "[aria-label='doc_editor']",
         ]
         for selector in selectors:
             try:
