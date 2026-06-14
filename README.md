@@ -1,71 +1,133 @@
 # ⬡ Egregore
 
-**Where Intelligence Emerges Together**
+**A Topic Runtime for Collective Intelligence**
 
-Egregore is a platform for collective intelligence and emergent reasoning. It explores multi-LLM collaboration, consensus formation, debate between models, and agent societies.
+Egregore is not a chatbot. It's not another ChatGPT client. It's a runtime that lets you manage conversations across multiple AI platforms from a single interface.
+
+```
+Topic: "Redis Cache Architecture"
+├── ChatGPT:  https://chatgpt.com/c/xxx
+├── Grok:     https://grok.com/chat/xxx
+├── Kimi:     https://kimi.moonshot.cn/chat/xxx
+├── Qwen:     https://tongyi.aliyun.com/qianwen/xxx
+└── Doubao:   https://www.doubao.com/chat/xxx
+```
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.13+
-- Node.js 18+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- Chrome or Edge (with remote debugging)
+- [uv](https://docs.astral.sh/uv/)
 
-### Backend
+### Setup
 
 ```bash
-cd backend
+# Clone
+git clone https://github.com/KuaaMU/egregore.git
+cd egregore/backend
+
+# Install
 uv sync
-uv run python -m egregore
+
+# Start Chrome with remote debugging
+# Close ALL Chrome windows first, then:
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
+
+# Login to ChatGPT, Grok, Kimi, etc. in that Chrome
 ```
 
-The API will be available at `http://localhost:8000`. Docs at `http://localhost:8000/docs`.
-
-### Frontend
+### Usage
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# Create a topic
+uv run python -m egregore create "Redis Cache" --providers chatgpt grok kimi
+
+# Send a prompt
+uv run python -m egregore send <topic_id> "How does Redis cache work?"
+
+# List topics
+uv run python -m egregore list
+
+# Close a topic (frees browser tabs, keeps metadata)
+uv run python -m egregore close <topic_id>
+
+# Reopen a topic (restores tabs from saved URLs)
+uv run python -m egregore reopen <topic_id>
+
+# View events
+uv run python -m egregore events <topic_id>
+
+# View stats
+uv run python -m egregore stats <topic_id>
+
+# Delete a topic
+uv run python -m egregore delete <topic_id>
 ```
-
-The UI will be available at `http://localhost:3000`.
-
-### With Real Providers
-
-Create a `.env` file in the backend directory:
-
-```env
-EGREGORE_OPENAI_API_KEY=sk-...
-EGREGORE_ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Without API keys, Egregore runs with mock providers for development.
 
 ## Architecture
 
-Egregore follows Hexagonal Architecture (Ports & Adapters):
+```
+providers/
+├── base.py              # Provider Protocol
+├── transport.py         # Transport Protocol
+├── cdp_transport.py     # Chrome CDP implementation
+├── browser_manager.py   # Page pool, reuse tabs
+├── network_observer.py  # Intercept network for metadata
+├── metrics.py           # ProviderMetrics
+└── {chatgpt,grok,kimi,qwen,doubao}/
 
-- **Domain**: Entities and provider abstractions
-- **Application**: Orchestrators (round table flow)
-- **Infrastructure**: Provider adapters (OpenAI, Anthropic, Mock)
-- **API**: FastAPI routes and schemas
+topic/
+├── models.py            # Topic entity
+├── store.py             # SQLite metadata storage
+├── events.py            # Event log
+├── runtime.py           # TopicRuntime (in-memory)
+└── manager.py           # TopicManager (create/send/close/reopen)
 
-See [docs/Architecture.md](docs/Architecture.md) for details.
+cli/
+└── main.py              # Thin CLI adapter
+```
+
+### Key Design Decisions
+
+| Decision | Why |
+|----------|-----|
+| **Topic is the core entity** | Users think in topics, not messages |
+| **Shallow cache** | Platforms store content; we store metadata + URLs |
+| **CDP Transport** | Attaches to user's Chrome; no headless, no CAPTCHA |
+| **Transport abstraction** | Provider doesn't know if it's CDP, Extension, or API |
+| **Event log** | Observability before features |
+
+### How It Works
+
+1. **BrowserManager** connects to Chrome via CDP
+2. **CdpTransport** sends prompts by typing into web UIs
+3. **TopicManager** creates/reuses browser tabs per topic
+4. **TopicStore** saves metadata to SQLite (never message content)
+5. **TopicEvent** logs every action for observability
+
+### Verified Platforms
+
+| Platform | Status | Latency (p50) |
+|----------|--------|---------------|
+| ChatGPT | ✅ | 9.1s |
+| Grok | ✅ | 14.4s |
+| Kimi | ✅ | 10.4s |
+| Qwen | ✅ | 7.2s |
+| Doubao | ✅ | 4.2s |
 
 ## Roadmap
 
-| Version | Feature |
-|---------|---------|
-| V1 | Multi-LLM Round Table |
-| V2 | Consensus Engine |
-| V3 | Debate Engine |
-| V4 | Dynamic Weighting |
-| V5 | Memory System |
-| V6 | Agent Society |
-
-See [docs/Roadmap.md](docs/Roadmap.md) for details.
+```
+Phase 3A: Topic Runtime          ✅
+Phase 3B: Observability          ✅
+Phase 3C: Runtime Layer          ✅
+Phase 3D: CLI + E2E              ✅
+Phase 3E: Dogfooding             ← Current (use it daily for 1-2 weeks)
+Phase 4:  Round Table            Planned
+Phase 5:  Synthesis              Planned
+```
 
 ## Project Structure
 
@@ -73,20 +135,15 @@ See [docs/Roadmap.md](docs/Roadmap.md) for details.
 Egregore/
 ├── backend/
 │   └── src/egregore/
-│       ├── api/            # FastAPI routes, schemas
-│       ├── application/    # Orchestrators, services
-│       ├── config/         # Settings
-│       ├── domain/         # Entities, ports, events
-│       └── infrastructure/ # Provider adapters
-├── frontend/
-│   └── src/
-│       ├── app/            # Next.js pages
-│       ├── components/     # React components
-│       └── types/          # TypeScript types
+│       ├── providers/     # Platform connectors
+│       ├── topic/         # Topic runtime
+│       └── cli/           # CLI
+├── extension/             # Chrome extension (research)
+├── frontend/              # Next.js (future)
 └── docs/
-    ├── ADR/                # Architecture Decision Records
     ├── Architecture.md
-    └── Roadmap.md
+    ├── Roadmap.md
+    └── ADR/
 ```
 
 ## License

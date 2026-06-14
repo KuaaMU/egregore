@@ -1,14 +1,12 @@
-"""Entry point for running Egregore with `python -m egregore`."""
+"""Entry point for Egregore CLI.
 
-import uvicorn
+Usage:
+    uv run python -m egregore create "Topic" --providers chatgpt grok
+    uv run python -m egregore list
+    uv run python -m egregore send <id> "prompt"
+"""
 
-from egregore.config.settings import settings
+from egregore.cli.main import main
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "egregore.api.app:create_app",
-        factory=True,
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug,
-    )
+    main()
