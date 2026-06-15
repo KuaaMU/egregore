@@ -2,29 +2,48 @@
   "manifest_version": 3,
   "name": "Egregore Bridge",
   "version": "0.1.0",
-  "description": "Connects AI platforms to Egregore daemon",
-  "permissions": ["activeTab", "scripting"],
+  "description": "Connects AI platforms to Egregore",
+  "permissions": ["activeTab", "scripting", "tabs"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://grok.com/*",
     "https://kimi.moonshot.cn/*",
     "https://tongyi.aliyun.com/*",
-    "https://www.doubao.com/*"
+    "https://www.doubao.com/*",
+    "https://www.qianwen.com/*",
+    "http://localhost:9225/*"
   ],
   "content_scripts": [
     {
-      "matches": [
-        "https://chatgpt.com/*"
-      ],
-      "js": ["src/chatgpt.js"],
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["src/platforms/chatgpt.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://grok.com/*"],
+      "js": ["src/platforms/grok.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://kimi.moonshot.cn/*", "https://www.kimi.com/*"],
+      "js": ["src/platforms/kimi.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://tongyi.aliyun.com/*", "https://www.qianwen.com/*"],
+      "js": ["src/platforms/qwen.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.doubao.com/*"],
+      "js": ["src/platforms/doubao.js"],
       "run_at": "document_idle"
     }
   ],
   "background": {
     "service_worker": "src/background.js"
   },
-  "icons": {
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+  "externally_connectable": {
+    "matches": ["http://localhost:*/*"]
   }
 }
