@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from egregore.providers.bootstrap import ensure_browser
 from egregore.providers.cdp_transport import CdpTransport
@@ -22,7 +22,7 @@ DB_PATH = Path.home() / ".egregore" / "topics.db"
 
 
 def create_web_app() -> FastAPI:
-    app = FastAPI(title="Egregore", version="0.4.0")
+    app = FastAPI(title="Egregore", version="0.5.0")
 
     store = TopicStore(DB_PATH)
     event_store = TopicEventStore(store._conn)
@@ -67,87 +67,74 @@ def create_web_app() -> FastAPI:
 
     @app.post("/api/topics/{topic_id}/send")
     async def send_prompt(topic_id: str, body: dict):
+        """SSE endpoint: streams results as each provider responds."""
         prompt = body.get("prompt", "")
         if not prompt:
             return {"error": "No prompt"}
 
-        # Auto-reopen if needed
         try:
             await manager.reopen(topic_id)
         except Exception:
             pass
 
-        # Get topic info
         topic = store.get(topic_id)
         if not topic:
             return {"error": "Topic not found"}
 
-        # Send to ALL providers in parallel
-        from egregore.providers.cdp_transport import CdpTransport
-
-        async def send_one(provider: str):
-            url = topic.get_url(provider) or ""
-            try:
-                page = await transport._browser_manager.get_page(url)
-                old_response = await transport._extract_latest_response(page)
-                old_content_len = await transport._get_content_length(page)
-
-                # Type and send
-                input_el = page.get_by_role("textbox").first
-                await input_el.wait_for(state="visible", timeout=10000)
-                await input_el.click()
-                await asyncio.sleep(0.2)
-                await page.keyboard.press("Control+a")
-                await page.keyboard.type(prompt, delay=10)
-                await asyncio.sleep(0.3)
-                await page.keyboard.press("Enter")
-
-                # Wait for response
-                content = await transport._wait_for_response(page, 60000, old_response, old_content_len)
-
-                # Detect images
-                images = []
+        async def event_stream():
+            async def send_one(provider: str):
+                url = topic.get_url(provider) or ""
                 try:
-                    imgs = page.locator("img[src*='dalle'], img[src*='generated'], img[alt*='generated']")
-                    count = await imgs.count()
-                    for i in range(min(count, 5)):
-                        src = await imgs.nth(i).get_attribute("src")
-                        if src:
-                            images.append(src)
-                except Exception:
-                    pass
+                    page = await transport._browser_manager.get_page(url)
+                    old_response = await transport._extract_latest_response(page)
+                    old_content_len = await transport._get_content_length(page)
 
-                return {
-                    "provider": provider,
-                    "content": content,
-                    "success": len(content) > 0,
-                    "images": images,
-                }
-            except Exception as e:
-                return {"provider": provider, "content": "", "success": False, "error": str(e), "images": []}
+                    input_el = page.get_by_role("textbox").first
+                    await input_el.wait_for(state="visible", timeout=10000)
+                    await input_el.click()
+                    await asyncio.sleep(0.2)
+                    await page.keyboard.press("Control+a")
+                    await page.keyboard.type(prompt, delay=10)
+                    await asyncio.sleep(0.3)
+                    await page.keyboard.press("Enter")
 
-        # Run all providers in parallel
-        tasks = [send_one(p) for p in topic.providers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+                    content = await transport._wait_for_response(page, 60000, old_response, old_content_len)
 
-        # Process results
-        processed = []
-        for r in results:
-            if isinstance(r, Exception):
-                processed.append({"provider": "unknown", "content": "", "success": False, "error": str(r), "images": []})
-            else:
-                processed.append(r)
+                    images = []
+                    try:
+                        imgs = page.locator("img[src*='dalle'], img[src*='generated'], img[src*='blob:']")
+                        count = await imgs.count()
+                        for i in range(min(count, 5)):
+                            src = await imgs.nth(i).get_attribute("src")
+                            if src:
+                                images.append(src)
+                    except Exception:
+                        pass
 
-        # Save responses
-        response_dict = {r["provider"]: r["content"] for r in processed if r["success"]}
-        if response_dict:
-            response_store.save(topic_id, prompt, response_dict)
+                    return {"provider": provider, "content": content, "success": len(content) > 0, "images": images, "latency_ms": 0}
+                except Exception as e:
+                    return {"provider": provider, "content": "", "success": False, "error": str(e), "images": [], "latency_ms": 0}
 
-        # Update topic access time
-        topic.touch()
-        store.save(topic)
+            # Send all in parallel, stream results as they complete
+            tasks = {asyncio.create_task(send_one(p)): p for p in topic.providers}
+            completed = []
 
-        return processed
+            for coro in asyncio.as_completed(tasks):
+                result = await coro
+                completed.append(result)
+                yield f"data: {json.dumps(result, ensure_ascii=False)}\n\n"
+
+            # Save all responses
+            response_dict = {r["provider"]: r["content"] for r in completed if r["success"]}
+            if response_dict:
+                response_store.save(topic_id, prompt, response_dict)
+
+            topic.touch()
+            store.save(topic)
+
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.post("/api/topics/{topic_id}/close")
     async def close_topic(topic_id: str):
