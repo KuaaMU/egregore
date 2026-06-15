@@ -53,28 +53,44 @@ function scheduleReconnect() {
 }
 
 function handleDaemonMessage(msg) {
-  // Forward commands from daemon to content scripts
   if (msg.type === 'send_prompt') {
-    chrome.tabs.query({ url: getPlatformUrl(msg.platform) }, (tabs) => {
-      if (tabs.length > 0) {
-        chrome.tabs.sendMessage(tabs[0].id, {
+    findOrCreateTab(msg.platform).then(tab => {
+      // Wait for content script to be ready, then send prompt
+      setTimeout(() => {
+        chrome.tabs.sendMessage(tab.id, {
           type: 'send_prompt',
           prompt: msg.prompt,
         });
-      }
+      }, 2000);
     });
   }
 }
 
-function getPlatformUrl(platform) {
-  const urls = {
-    chatgpt: 'https://chatgpt.com/*',
-    grok: 'https://grok.com/*',
-    kimi: 'https://kimi.moonshot.cn/*',
-    qwen: 'https://tongyi.aliyun.com/*',
-    doubao: 'https://www.doubao.com/*',
-  };
-  return urls[platform] || '*';
+const PLATFORM_URLS = {
+  chatgpt: 'https://chatgpt.com/',
+  grok: 'https://grok.com/',
+  kimi: 'https://kimi.moonshot.cn/',
+  qwen: 'https://tongyi.aliyun.com/qianwen/',
+  doubao: 'https://www.doubao.com/',
+};
+
+async function findOrCreateTab(platform) {
+  const url = PLATFORM_URLS[platform];
+  if (!url) throw new Error('Unknown platform: ' + platform);
+
+  // Find existing tab
+  const tabs = await chrome.tabs.query({ url: url + '*' });
+  if (tabs.length > 0) {
+    // Focus existing tab
+    await chrome.tabs.update(tabs[0].id, { active: true });
+    return tabs[0];
+  }
+
+  // Create new tab
+  const tab = await chrome.tabs.create({ url: url, active: false });
+  // Wait for page to load
+  await new Promise(r => setTimeout(r, 5000));
+  return tab;
 }
 
 // === Message handling from content scripts ===

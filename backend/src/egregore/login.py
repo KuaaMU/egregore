@@ -1,11 +1,10 @@
 """Login — one-time visible browser for manual login.
 
-Flow:
-1. Open visible Chrome (Playwright managed)
-2. User logs into platforms manually
-3. Cookies saved to ~/.egregore/profile/ (Playwright format)
-4. Close browser
-5. All subsequent runs: headless with saved cookies (silent)
+After login, Playwright saves cookies to ~/.egregore/profile/
+in its own format (not Chrome's encrypted format).
+
+All subsequent runs use headless mode with the saved profile.
+Completely silent. No browser popup.
 
 Usage:
     uv run python -m egregore.login
@@ -29,42 +28,41 @@ PLATFORMS = [
 
 async def main():
     print("=" * 50)
-    print("Egregore — First Time Login")
+    print("Egregore — One-Time Login")
     print("=" * 50)
     print()
-    print("A browser window will open.")
-    print("Log into each platform you want to use.")
-    print("When done, press Enter here to save and close.")
+    print("A browser will open. Log into the platforms you use.")
+    print("This only needs to be done once.")
+    print("After this, Egregore runs silently in the background.")
     print()
 
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
     async with async_playwright() as p:
-        # Launch visible browser with persistent profile
         context = await p.chromium.launch_persistent_context(
             user_data_dir=str(PROFILE_DIR),
             headless=False,
             viewport={"width": 1280, "height": 800},
         )
 
-        # Open tabs for each platform
+        # Open tabs
         for name, url in PLATFORMS:
             try:
                 page = await context.new_page()
                 await page.goto(url, wait_until="domcontentloaded")
-                print(f"  Opened {name}: {url}")
+                print(f"  Opened {name}")
             except Exception as e:
                 print(f"  Failed {name}: {e}")
 
         print()
         input("Press Enter after logging in to all platforms...")
 
-        # Close (cookies saved automatically by Playwright)
+        # Playwright automatically saves cookies/localStorage to PROFILE_DIR
         await context.close()
 
     print()
     print(f"Session saved to: {PROFILE_DIR}")
-    print("Egregore will now run silently with your login state.")
+    print("From now on: uv run python -m egregore.web  (silent, no popup)")
     print()
 
 
