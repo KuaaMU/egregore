@@ -120,7 +120,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button class="new-btn" onclick="showCreate()">+ New Topic</button>
   <div class="topic-list" id="topicList"></div>
   <div class="sidebar-footer">
-    <span><span class="conn-dot ok" id="connDot"></span><span class="conn-text" id="connText">Connected</span></span>
+    <span><span class="conn-dot off" id="connDot"></span><span class="conn-text" id="connText">Checking...</span></span>
     <button class="ib" onclick="showSettings()">⚙</button>
   </div>
 </div>
@@ -194,7 +194,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <script>
 marked.setOptions({breaks:true, gfm:true});
 
-function renderMd(s) { return marked.parse(s || ''); }
+// Marked CDN fallback
+var markedAvailable = typeof marked !== 'undefined';
+function renderMd(s) {
+  if (!s) return '';
+  if (markedAvailable) {
+    try { return marked.parse(s); } catch(e) { return esc(s); }
+  }
+  return esc(s);
+}
 function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
 let currentTopic = null;
@@ -350,15 +358,23 @@ async function deleteTopicById(id) {
 // Render
 function renderTurn(prompt, responses, turn) {
   var providers = Object.entries(responses);
-  var html = '<div class="message user"><div class="message-bubble">' + esc(prompt) + '</div>';
+  // Store prompt in data attribute (safe from injection)
+  var html = '<div class="message user" data-prompt="' + esc(prompt).replace(/"/g, '&quot;') + '">';
+  html += '<div class="message-bubble">' + esc(prompt) + '</div>';
   html += '<div class="msg-actions"><button onclick="copyMsg(this)">📋</button>';
-  html += '<button onclick="editResend(\'' + esc(prompt).replace(/'/g, "\\'") + '\')">✎</button></div></div>';
+  html += '<button onclick="editResendFromEl(this)">✎</button></div></div>';
   html += '<div class="provider-grid">';
   for (var i = 0; i < providers.length; i++) {
     html += renderCard(providers[i][0], providers[i][1], true, 0, turn);
   }
   html += '</div>';
   return html;
+}
+
+function editResendFromEl(btn) {
+  var msg = btn.closest('.message');
+  var prompt = msg.getAttribute('data-prompt') || '';
+  editResend(prompt);
 }
 
 function renderCard(pid, text, success, latencyMs, turn) {
@@ -463,6 +479,11 @@ async function sendPrompt() {
       body: JSON.stringify({prompt: prompt})
     });
 
+    if (!resp.ok) {
+      var errBody = await resp.text();
+      throw new Error(errBody || 'HTTP ' + resp.status);
+    }
+
     var reader = resp.body.getReader();
     var decoder = new TextDecoder();
     var buffer = '';
@@ -529,11 +550,15 @@ async function createTopic() {
   var p = [];
   document.querySelectorAll('.checkbox-group input:checked').forEach(function(c) { p.push(c.value); });
   if (!p.length) return;
-  await api('/api/topics', {method: 'POST', body: {title: t, providers: p}});
-  document.getElementById('newTitle').value = '';
-  hideCreate();
-  await loadTopics();
-  showToast('Created');
+  try {
+    await api('/api/topics', {method: 'POST', body: {title: t, providers: p}});
+    document.getElementById('newTitle').value = '';
+    hideCreate();
+    await loadTopics();
+    showToast('Created');
+  } catch(e) {
+    showToast('Error: ' + e.message, 3000);
+  }
 }
 
 // Init

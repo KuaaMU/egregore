@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from pathlib import Path
 
-from fastapi import FastAPI
+import structlog
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from egregore.providers.browser_manager import BrowserManager
@@ -17,12 +17,22 @@ from egregore.topic.events import TopicEventStore
 from egregore.topic.manager import TopicManager
 from egregore.topic.store import TopicStore
 
+logger = structlog.get_logger()
+
 STATIC_DIR = Path(__file__).parent / "static"
 DB_PATH = Path.home() / ".egregore" / "topics.db"
 
+PROVIDER_URLS = {
+    "chatgpt": "https://chatgpt.com/",
+    "grok": "https://grok.com/",
+    "kimi": "https://kimi.moonshot.cn/",
+    "qwen": "https://tongyi.aliyun.com/qianwen/",
+    "doubao": "https://www.doubao.com/",
+}
+
 
 def create_web_app() -> FastAPI:
-    app = FastAPI(title="Egregore", version="0.5.1")
+    app = FastAPI(title="Egregore", version="0.5.2")
 
     store = TopicStore(DB_PATH)
     event_store = TopicEventStore(store._conn)
@@ -61,35 +71,29 @@ def create_web_app() -> FastAPI:
 
     @app.post("/api/topics")
     async def create_topic(body: dict):
-        title = body.get("title", "Untitled")
-        providers = body.get("providers", ["chatgpt", "grok"])
+        title = body.get("title", "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Title is required")
+        providers = body.get("providers", [])
+        if not providers:
+            raise HTTPException(status_code=400, detail="At least one provider is required")
         topic = await manager.create(title, providers)
         return {"id": topic.id, "title": topic.title, "providers": topic.providers, "urls": topic.urls}
 
     @app.post("/api/topics/{topic_id}/send")
     async def send_prompt(topic_id: str, body: dict):
-        """SSE endpoint: streams results as each provider responds."""
-        prompt = body.get("prompt", "")
+        prompt = body.get("prompt", "").strip()
         if not prompt:
-            return {"error": "No prompt"}
+            raise HTTPException(status_code=400, detail="Prompt is required")
 
-        # Auto-reopen
+        topic = store.get(topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
+
         try:
             await manager.reopen(topic_id)
         except Exception:
             pass
-
-        topic = store.get(topic_id)
-        if not topic:
-            return {"error": "Topic not found"}
-
-        PROVIDER_URLS = {
-            "chatgpt": "https://chatgpt.com/",
-            "grok": "https://grok.com/",
-            "kimi": "https://kimi.moonshot.cn/",
-            "qwen": "https://tongyi.aliyun.com/qianwen/",
-            "doubao": "https://www.doubao.com/",
-        }
 
         async def event_stream():
             url_updates = {}
@@ -112,27 +116,14 @@ def create_web_app() -> FastAPI:
 
                     content = await transport._wait_for_response(page, 60000, old_response, old_content_len)
 
-                    # Capture conversation URL after sending
                     new_url = page.url
-                    if new_url and new_url != url and "/c/" in new_url or "/chat/" in new_url:
+                    if new_url and new_url != url and ("/c/" in new_url or "/chat/" in new_url):
                         url_updates[provider] = new_url
 
-                    images = []
-                    try:
-                        imgs = page.locator("img[src*='dalle'], img[src*='generated'], img[src*='blob:']")
-                        count = await imgs.count()
-                        for i in range(min(count, 5)):
-                            src = await imgs.nth(i).get_attribute("src")
-                            if src:
-                                images.append(src)
-                    except Exception:
-                        pass
-
-                    return {"provider": provider, "content": content, "success": len(content) > 0, "images": images, "latency_ms": 0}
+                    return {"provider": provider, "content": content, "success": len(content) > 0, "images": [], "latency_ms": 0}
                 except Exception as e:
                     return {"provider": provider, "content": "", "success": False, "error": str(e), "images": [], "latency_ms": 0}
 
-            # Send all in parallel, stream results as they complete
             tasks = {asyncio.create_task(send_one(p)): p for p in topic.providers}
             completed = []
 
@@ -141,11 +132,9 @@ def create_web_app() -> FastAPI:
                 completed.append(result)
                 yield f"data: {json.dumps(result, ensure_ascii=False)}\n\n"
 
-            # Save URL updates
             for provider, new_url in url_updates.items():
                 topic.set_url(provider, new_url)
 
-            # Save all responses
             response_dict = {r["provider"]: r["content"] for r in completed if r["success"]}
             if response_dict:
                 response_store.save(topic_id, prompt, response_dict)
@@ -159,41 +148,44 @@ def create_web_app() -> FastAPI:
 
     @app.post("/api/topics/{topic_id}/close")
     async def close_topic(topic_id: str):
+        topic = store.get(topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
         await manager.close(topic_id)
         return {"closed": topic_id}
 
     @app.post("/api/topics/{topic_id}/reopen")
     async def reopen_topic(topic_id: str):
+        topic = store.get(topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
         topic = await manager.reopen(topic_id)
         return {"id": topic.id, "title": topic.title, "urls": topic.urls}
 
     @app.delete("/api/topics/{topic_id}")
     async def delete_topic(topic_id: str):
-        # Close runtime first
+        topic = store.get(topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
         try:
             await manager.close(topic_id)
         except Exception:
             pass
-        # Delete from store
         manager.delete_topic(topic_id)
         return {"deleted": topic_id}
 
     @app.get("/api/topics/{topic_id}/events")
     async def get_events(topic_id: str):
+        topic = store.get(topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
         return event_store.get_events(topic_id, limit=50)
 
     @app.get("/api/topics/{topic_id}/responses")
     async def get_responses(topic_id: str):
+        topic = store.get(topic_id)
+        if not topic:
+            raise HTTPException(status_code=404, detail="Topic not found")
         return response_store.load(topic_id)
-
-    def _provider_url(provider: str) -> str:
-        urls = {
-            "chatgpt": "https://chatgpt.com/",
-            "grok": "https://grok.com/",
-            "kimi": "https://kimi.moonshot.cn/",
-            "qwen": "https://tongyi.aliyun.com/qianwen/",
-            "doubao": "https://www.doubao.com/",
-        }
-        return urls.get(provider, "")
 
     return app
