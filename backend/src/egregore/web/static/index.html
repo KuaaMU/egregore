@@ -283,9 +283,7 @@ async function api(path,opts={}){const r=await fetch(path,{headers:{'Content-Typ
 
 // Topics
 async function loadTopics(){try{topics=await api('/api/topics')}catch{return}
-document.getElementById('topicList').innerHTML=topics.map(t=>`<div class="topic-item ${currentTopic?.id===t.id?'active':''}" onclick="selectTopic('${t.id}')"><div class="topic-info"><div class="topic-title">${esc(t.title)}</div><div class="topic-meta">${t.providers.join(', ')}</div></div><div style="display:flex;gap:2px;flex-shrink:0">
-<button class="ib" onclick="event.stopPropagation();deleteTopicById('${t.id}')" title="Delete" style="font-size:12px;color:var(--dim)">✕</button>
-</div></div>`).join('')}
+document.getElementById('topicList').innerHTML=topics.map(t=>`<div class="topic-item ${currentTopic?.id===t.id?'active':''}" onclick="selectTopic('${t.id}')"><div class="topic-info"><div class="topic-title">${esc(t.title)}</div><div class="topic-meta">${t.providers.join(', ')}</div></div><button onclick="event.stopPropagation();deleteTopicById('${t.id}')" title="Delete" style="background:none;border:none;color:var(--dim);cursor:pointer;padding:4px 8px;font-size:14px">✕</button></div>`).join('')
 
 async function selectTopic(id){currentTopic=topics.find(t=>t.id===id);if(!currentTopic)return;document.getElementById('mainTitle').textContent=currentTopic.title;document.getElementById('inputArea').style.display='block';await loadResponses(id);loadTopics()}
 
