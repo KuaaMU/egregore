@@ -7,86 +7,55 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root,[data-theme="dark"]{--bg:#0a0a0a;--surface:#141414;--surface2:#1a1a1a;--border:#262626;--text:#e5e5e5;--dim:#737373;--accent:#8b5cf6;--accent-dim:#7c3aed;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--user-bg:#1e1b4b;--user-border:#312e81;--code-bg:#1e1e1e;--code-border:#333;--shadow:0 8px 32px rgba(0,0,0,.5);--hover:rgba(255,255,255,.04)}
-[data-theme="light"]{--bg:#fafafa;--surface:#fff;--surface2:#f5f5f5;--border:#e5e5e5;--text:#171717;--dim:#737373;--accent:#7c3aed;--accent-dim:#6d28d9;--green:#16a34a;--red:#dc2626;--yellow:#ca8a04;--user-bg:#ede9fe;--user-border:#c4b5fd;--code-bg:#f4f4f5;--code-border:#e4e4e7;--shadow:0 8px 32px rgba(0,0,0,.12);--hover:rgba(0,0,0,.03)}
+:root,[data-theme="dark"]{--bg:#0a0a0a;--surface:#141414;--border:#262626;--text:#e5e5e5;--dim:#737373;--accent:#8b5cf6;--green:#22c55e;--red:#ef4444;--user-bg:#1e1b4b;--user-border:#312e81;--code-bg:#1e1e1e;--hover:rgba(255,255,255,.04)}
+[data-theme="light"]{--bg:#fafafa;--surface:#fff;--border:#e5e5e5;--text:#171717;--dim:#737373;--accent:#7c3aed;--green:#16a34a;--red:#dc2626;--user-bg:#ede9fe;--user-border:#c4b5fd;--code-bg:#f4f4f5;--hover:rgba(0,0,0,.03)}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex}
-a{color:var(--accent);text-decoration:none}
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-
-/* Sidebar */
 .sidebar{width:260px;border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;background:var(--surface)}
 .sidebar-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-.sidebar-header h1{font-size:15px;font-weight:600;letter-spacing:-.02em}
-.sidebar-header h1 span{color:var(--accent)}
-.new-btn{padding:8px 12px;margin:10px 12px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px}
+.sidebar-header h1{font-size:15px;font-weight:600}
+.new-btn{padding:8px 12px;margin:10px 12px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;cursor:pointer;font-size:13px}
 .new-btn:hover{border-color:var(--accent)}
 .topic-list{flex:1;overflow-y:auto;padding:4px 8px}
-.topic-item{padding:10px 10px;border-radius:8px;cursor:pointer;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center;position:relative}
+.topic-item{padding:10px;border-radius:8px;cursor:pointer;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center}
 .topic-item:hover{background:var(--hover)}
 .topic-item.active{background:var(--bg);border:1px solid var(--border)}
-.topic-info{flex:1;min-width:0}
 .topic-title{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .topic-meta{font-size:11px;color:var(--dim);margin-top:2px}
-.topic-menu-btn{opacity:0;color:var(--dim);cursor:pointer;padding:4px;border-radius:4px;font-size:14px;flex-shrink:0;background:none;border:none}
-.topic-item:hover .topic-menu-btn{opacity:1}
-.topic-menu-btn:hover{color:var(--text);background:var(--hover)}
-
-/* Topic context menu */
-.context-menu{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50;min-width:140px;box-shadow:var(--shadow);display:none}
-.context-menu.show{display:block}
-.context-menu-item{padding:8px 12px;font-size:13px;cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:8px}
-.context-menu-item:hover{background:var(--hover)}
-.context-menu-item.danger{color:var(--red)}
-.context-menu-item.danger:hover{background:rgba(239,68,68,.1)}
-
-/* Sidebar footer */
+.ib{background:none;border:none;color:var(--dim);cursor:pointer;padding:4px 8px;border-radius:4px;font-size:13px}
+.ib:hover{color:var(--text);background:var(--hover)}
 .sidebar-footer{padding:10px 12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .conn-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:6px}
 .conn-dot.ok{background:var(--green)}.conn-dot.off{background:var(--red)}
 .conn-text{font-size:11px;color:var(--dim)}
-
-/* Main */
 .main{flex:1;display:flex;flex-direction:column;min-width:0}
 .main-header{padding:12px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--surface)}
 .main-header h2{font-size:15px;font-weight:600}
-.header-actions{display:flex;gap:6px}
-
-/* Chat area */
-.chat-area{flex:1;overflow-y:auto;padding:24px 24px 16px}
+.chat-area{flex:1;overflow-y:auto;padding:24px}
 .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--dim)}
 .empty-state .icon{font-size:48px;margin-bottom:16px;opacity:.3}
-.empty-state p{font-size:14px}
-
-/* Messages */
 .message{margin-bottom:20px;max-width:85%}
 .message.user{margin-left:auto}
 .message-bubble{padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.6}
 .message.user .message-bubble{background:var(--user-bg);border:1px solid var(--user-border);border-radius:16px 16px 4px 16px}
-
-/* Message actions bar */
 .msg-actions{display:flex;gap:2px;margin-top:6px;opacity:0;transition:opacity .15s}
 .message:hover .msg-actions{opacity:1}
-.msg-actions .act{background:none;border:none;color:var(--dim);cursor:pointer;padding:4px 6px;border-radius:4px;font-size:12px;display:flex;align-items:center;gap:4px}
-.msg-actions .act:hover{color:var(--text);background:var(--hover)}
+.msg-actions button{background:none;border:none;color:var(--dim);cursor:pointer;padding:4px 6px;border-radius:4px;font-size:12px}
+.msg-actions button:hover{color:var(--text);background:var(--hover)}
 .message.user .msg-actions{justify-content:flex-end}
-
-/* Markdown */
 .md-content{font-size:14px;line-height:1.7}
 .md-content p{margin-bottom:8px}.md-content p:last-child{margin-bottom:0}
 .md-content h1,.md-content h2,.md-content h3{margin:16px 0 8px;font-weight:600}
-.md-content h1{font-size:18px}.md-content h2{font-size:16px}.md-content h3{font-size:14px}
 .md-content ul,.md-content ol{margin:8px 0;padding-left:20px}
 .md-content li{margin-bottom:4px}
 .md-content code{background:var(--code-bg);padding:2px 6px;border-radius:4px;font-size:13px;font-family:'SF Mono','Consolas',monospace}
-.md-content pre{background:var(--code-bg);border:1px solid var(--code-border);border-radius:8px;padding:12px;margin:8px 0;overflow-x:auto}
+.md-content pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin:8px 0;overflow-x:auto}
 .md-content pre code{background:none;padding:0}
 .md-content blockquote{border-left:3px solid var(--accent);padding-left:12px;color:var(--dim);margin:8px 0}
 .md-content table{border-collapse:collapse;width:100%;margin:8px 0}
 .md-content th,.md-content td{border:1px solid var(--border);padding:6px 10px;text-align:left;font-size:13px}
-.md-content th{background:var(--surface2);font-weight:600}
+.md-content th{background:var(--surface);font-weight:600}
 .md-content img{max-width:100%;border-radius:8px;margin:8px 0}
-
-/* Provider grid */
 .provider-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-bottom:20px}
 .provider-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .15s}
 .provider-card:hover{border-color:var(--dim)}
@@ -97,7 +66,6 @@ a{color:var(--accent);text-decoration:none}
 .badge{font-size:10px;padding:2px 6px;border-radius:8px;font-weight:500}
 .badge-ok{background:rgba(34,197,94,.15);color:var(--green)}
 .badge-fail{background:rgba(239,68,68,.15);color:var(--red)}
-.badge-time{background:rgba(128,128,128,.1);color:var(--dim)}
 .badge-wait{background:rgba(139,92,246,.15);color:var(--accent)}
 .chevron{transition:transform .15s;font-size:11px;color:var(--dim)}
 .provider-card.expanded .chevron{transform:rotate(90deg)}
@@ -105,92 +73,58 @@ a{color:var(--accent);text-decoration:none}
 .card-full{display:none;padding:0 14px 14px}
 .provider-card.expanded .card-summary{display:none}
 .provider-card.expanded .card-full{display:block}
-
-/* Card actions bar */
 .card-actions{display:flex;gap:2px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
-.card-actions .act{background:none;border:none;color:var(--dim);cursor:pointer;padding:4px 8px;border-radius:4px;font-size:12px;display:flex;align-items:center;gap:4px}
-.card-actions .act:hover{color:var(--text);background:var(--hover)}
-
-/* Modal */
+.card-actions button{background:none;border:none;color:var(--dim);cursor:pointer;padding:4px 8px;border-radius:4px;font-size:12px}
+.card-actions button:hover{color:var(--text);background:var(--hover)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:100;padding:40px}
 .modal-overlay.show{display:flex}
-.modal-content{background:var(--surface);border:1px solid var(--border);border-radius:12px;max-width:800px;width:100%;max-height:85vh;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+.modal-content{background:var(--surface);border:1px solid var(--border);border-radius:12px;max-width:800px;width:100%;max-height:85vh;display:flex;flex-direction:column}
 .modal-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 .modal-body{flex:1;overflow-y:auto;padding:20px}
-
-/* Loading */
-.loading-bubble{display:flex;align-items:center;gap:8px;padding:12px 16px;margin-bottom:16px}
+.loading-bubble{display:flex;align-items:center;gap:8px;padding:12px 16px}
 .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-text{font-size:13px;color:var(--dim)}
-
-/* Input */
 .input-area{padding:12px 24px 16px;border-top:1px solid var(--border);background:var(--surface)}
 .input-row{display:flex;gap:8px;align-items:flex-end}
 .input-row input{flex:1;padding:10px 14px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:12px;font-size:14px;outline:none}
 .input-row input:focus{border-color:var(--accent)}
 .send-btn{width:36px;height:36px;background:var(--accent);color:white;border:none;border-radius:10px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.send-btn:hover{background:var(--accent-dim)}
+.send-btn:hover{background:var(--accent)}
 .send-btn:disabled{opacity:.4;cursor:not-allowed}
-
-/* Create modal */
-.create-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:200}
-.create-overlay.show{display:flex}
-.create-modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:400px;box-shadow:var(--shadow)}
-.create-modal h3{font-size:16px;margin-bottom:16px}
-.create-modal input[type=text]{width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:14px;margin-bottom:12px;outline:none}
-.create-modal input[type=text]:focus{border-color:var(--accent)}
-.create-modal label{font-size:13px;color:var(--dim);margin-bottom:6px;display:block}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:200}
+.overlay.show{display:flex}
+.modal-sm{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:400px}
+.modal-sm h3{font-size:16px;margin-bottom:16px}
+.modal-sm input[type=text]{width:100%;padding:10px 14px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:14px;margin-bottom:12px;outline:none}
+.modal-sm input[type=text]:focus{border-color:var(--accent)}
+.modal-sm label{font-size:13px;color:var(--dim);margin-bottom:6px;display:block}
 .checkbox-group{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
 .checkbox-group label{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
-.create-actions{display:flex;gap:8px;justify-content:flex-end}
-.create-actions button{padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+.modal-actions button{padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px}
 .btn-cancel{background:var(--bg);border:1px solid var(--border);color:var(--dim)}
-.btn-create{background:var(--accent);border:none;color:white}
-
-/* Settings modal */
-.settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:200}
-.settings-overlay.show{display:flex}
-.settings-modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:440px;box-shadow:var(--shadow)}
-.settings-modal h3{font-size:16px;margin-bottom:16px}
-.setting-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
-.setting-row:last-child{border-bottom:none}
-.setting-label{font-size:13px;font-weight:500}
-.setting-desc{font-size:11px;color:var(--dim);margin-top:2px}
-.toggle{width:36px;height:20px;background:var(--border);border-radius:10px;cursor:pointer;position:relative;border:none}
-.toggle.on{background:var(--accent)}
-.toggle::after{content:'';position:absolute;width:16px;height:16px;background:white;border-radius:50%;top:2px;left:2px;transition:transform .15s}
-.toggle.on::after{transform:translateX(16px)}
-
-/* Toast */
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);z-index:300;display:none;box-shadow:var(--shadow)}
+.btn-primary{background:var(--accent);border:none;color:white}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);z-index:300;display:none}
 .toast.show{display:block;animation:fadeIn .2s}
 @keyframes fadeIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
-
-/* Icon button helper */
-.ib{background:none;border:none;color:var(--dim);cursor:pointer;padding:4px;border-radius:4px;font-size:13px;display:inline-flex;align-items:center;justify-content:center}
-.ib:hover{color:var(--text);background:var(--hover)}
 </style>
 </head>
 <body>
 
-<!-- Sidebar -->
 <div class="sidebar">
   <div class="sidebar-header">
-    <h1><span>⬡</span> Egregore</h1>
-    <div style="display:flex;gap:4px">
-      <button class="ib" onclick="toggleTheme()" title="Toggle theme" id="themeBtn">🌙</button>
-    </div>
+    <h1><span style="color:var(--accent)">⬡</span> Egregore</h1>
+    <button class="ib" onclick="toggleTheme()" id="themeBtn">🌙</button>
   </div>
-  <button class="new-btn" onclick="showCreate()"><span>+</span> New Topic</button>
+  <button class="new-btn" onclick="showCreate()">+ New Topic</button>
   <div class="topic-list" id="topicList"></div>
   <div class="sidebar-footer">
     <span><span class="conn-dot ok" id="connDot"></span><span class="conn-text" id="connText">Connected</span></span>
-    <button class="ib" onclick="showSettings()" title="Settings">⚙</button>
+    <button class="ib" onclick="showSettings()">⚙</button>
   </div>
 </div>
 
-<!-- Main -->
 <div class="main">
   <div class="main-header">
     <h2 id="mainTitle">Select a topic</h2>
@@ -200,20 +134,20 @@ a{color:var(--accent);text-decoration:none}
   </div>
   <div class="input-area" id="inputArea" style="display:none">
     <div class="input-row">
-      <input type="text" id="promptInput" placeholder="Ask all providers..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)sendPrompt()">
-      <button class="send-btn" onclick="sendPrompt()" id="sendBtn" title="Send">↑</button>
+      <input type="text" id="promptInput" placeholder="Ask all providers..." onkeydown="if(event.key==='Enter')sendPrompt()">
+      <button class="send-btn" onclick="sendPrompt()" id="sendBtn">↑</button>
     </div>
   </div>
 </div>
 
-<!-- Modal -->
+<!-- Full-screen modal -->
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
   <div class="modal-content">
     <div class="modal-header">
       <span style="font-weight:600;font-size:14px" id="modalTitle"></span>
       <div style="display:flex;gap:4px">
-        <button class="ib" onclick="copyModalContent()" title="Copy">📋</button>
-        <button class="ib" onclick="closeModal()" title="Close">✕</button>
+        <button class="ib" onclick="copyModalContent()">📋</button>
+        <button class="ib" onclick="closeModal()">✕</button>
       </div>
     </div>
     <div class="modal-body md-content" id="modalBody"></div>
@@ -221,8 +155,8 @@ a{color:var(--accent);text-decoration:none}
 </div>
 
 <!-- Create modal -->
-<div class="create-overlay" id="createOverlay">
-  <div class="create-modal">
+<div class="overlay" id="createOverlay">
+  <div class="modal-sm">
     <h3>New Topic</h3>
     <input type="text" id="newTitle" placeholder="Topic title..." onkeydown="if(event.key==='Enter')createTopic()">
     <label>Providers</label>
@@ -233,23 +167,20 @@ a{color:var(--accent);text-decoration:none}
       <label><input type="checkbox" value="qwen"> Qwen</label>
       <label><input type="checkbox" value="doubao"> Doubao</label>
     </div>
-    <div class="create-actions">
+    <div class="modal-actions">
       <button class="btn-cancel" onclick="hideCreate()">Cancel</button>
-      <button class="btn-create" onclick="createTopic()">Create</button>
+      <button class="btn-primary" onclick="createTopic()">Create</button>
     </div>
   </div>
 </div>
 
 <!-- Settings modal -->
-<div class="settings-overlay" id="settingsOverlay" onclick="if(event.target===this)hideSettings()">
-  <div class="settings-modal">
+<div class="overlay" id="settingsOverlay" onclick="if(event.target===this)hideSettings()">
+  <div class="modal-sm">
     <h3>Settings</h3>
-    <div class="setting-row">
-      <div><div class="setting-label">Dark Mode</div><div class="setting-desc">Toggle dark/light theme</div></div>
-      <button class="toggle" id="themeToggle" onclick="toggleTheme()"></button>
-    </div>
-    <div class="setting-row">
-      <div><div class="setting-label">Default Providers</div><div class="setting-desc">Pre-selected when creating topics</div></div>
+    <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:500">Default Providers</div>
+      <div style="font-size:11px;color:var(--dim);margin-top:2px;margin-bottom:8px">Pre-selected when creating topics</div>
       <div id="settingsProviders" style="display:flex;flex-wrap:wrap;gap:10px"></div>
     </div>
     <div style="margin-top:16px;text-align:right">
@@ -261,164 +192,351 @@ a{color:var(--accent);text-decoration:none}
 <div class="toast" id="toast"></div>
 
 <script>
-marked.setOptions({breaks:true,gfm:true});
-function renderMd(s){return marked.parse(s||'')}
-function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML}
+marked.setOptions({breaks:true, gfm:true});
 
-let currentTopic=null, topics=[], modalRawText='', turnCounter=0, ctxTopicId=null;
+function renderMd(s) { return marked.parse(s || ''); }
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+let currentTopic = null;
+let topics = [];
+let modalRawText = '';
+let turnCounter = 0;
 
 // Theme
-function toggleTheme(){const h=document.documentElement,c=h.getAttribute('data-theme'),n=c==='dark'?'light':'dark';h.setAttribute('data-theme',n);document.getElementById('themeBtn').textContent=n==='dark'?'🌙':'☀️';document.getElementById('themeToggle').className='toggle'+(n==='dark'?' on':'');localStorage.setItem('theme',n)}
-(()=>{const s=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',s);document.getElementById('themeBtn').textContent=s==='dark'?'🌙':'☀️';setTimeout(()=>{document.getElementById('themeToggle').className='toggle'+(s==='dark'?' on':'')},0)})();
+function toggleTheme() {
+  const h = document.documentElement;
+  const c = h.getAttribute('data-theme');
+  const n = c === 'dark' ? 'light' : 'dark';
+  h.setAttribute('data-theme', n);
+  document.getElementById('themeBtn').textContent = n === 'dark' ? '🌙' : '☀️';
+  localStorage.setItem('theme', n);
+}
+(function() {
+  const s = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', s);
+  document.getElementById('themeBtn').textContent = s === 'dark' ? '🌙' : '☀️';
+})();
 
-// Connection
-async function checkConn(){try{await fetch('/api/topics',{signal:AbortSignal.timeout(3000)});document.getElementById('connDot').className='conn-dot ok';document.getElementById('connText').textContent='Connected'}catch{document.getElementById('connDot').className='conn-dot off';document.getElementById('connText').textContent='Disconnected'}}
-setInterval(checkConn,10000);
+// Connection check
+async function checkConn() {
+  try {
+    await fetch('/api/topics', {signal: AbortSignal.timeout(3000)});
+    document.getElementById('connDot').className = 'conn-dot ok';
+    document.getElementById('connText').textContent = 'Connected';
+  } catch {
+    document.getElementById('connDot').className = 'conn-dot off';
+    document.getElementById('connText').textContent = 'Disconnected';
+  }
+}
+setInterval(checkConn, 10000);
 
 // Toast
-function showToast(msg,ms=2000){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms)}
+function showToast(msg, ms) {
+  ms = ms || 2000;
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, ms);
+}
 
 // API
-async function api(path,opts={}){const r=await fetch(path,{headers:{'Content-Type':'application/json'},...opts,body:opts.body?JSON.stringify(opts.body):undefined});if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json()}
-
-// Topics
-async function loadTopics(){try{topics=await api('/api/topics')}catch{return}
-document.getElementById('topicList').innerHTML=topics.map(t=>`<div class="topic-item ${currentTopic?.id===t.id?'active':''}" onclick="selectTopic('${t.id}')"><div class="topic-info"><div class="topic-title">${esc(t.title)}</div><div class="topic-meta">${t.providers.join(', ')}</div></div><button onclick="event.stopPropagation();deleteTopicById('${t.id}')" title="Delete" style="background:none;border:none;color:var(--dim);cursor:pointer;padding:4px 8px;font-size:14px">✕</button></div>`).join('')
-
-async function selectTopic(id){currentTopic=topics.find(t=>t.id===id);if(!currentTopic)return;document.getElementById('mainTitle').textContent=currentTopic.title;document.getElementById('inputArea').style.display='block';await loadResponses(id);loadTopics()}
-
-async function loadResponses(id){let r;try{r=await api(`/api/topics/${id}/responses`)}catch{return}
-const a=document.getElementById('chatArea');if(!r.length){a.innerHTML='<div class="empty-state"><p>No responses yet. Send a prompt.</p></div>';return}
-turnCounter=0;let html='';for(const set of r){turnCounter++;html+=renderTurn(set.prompt,set.responses||{},turnCounter)}a.innerHTML=html;a.scrollTop=a.scrollHeight}
-
-// Topic actions
-async function deleteTopicById(id){
-  if(!confirm('Delete this topic?'))return;
-  try{await api(`/api/topics/${id}`,{method:'DELETE'});
-  if(currentTopic?.id===id){currentTopic=null;document.getElementById('mainTitle').textContent='Select a topic';document.getElementById('inputArea').style.display='none';document.getElementById('chatArea').innerHTML='<div class="empty-state"><div class="icon">⬡</div><p>Create a topic to get started</p></div>'}
-  showToast('Deleted');await loadTopics()}catch(e){showToast('Error: '+e.message,3000)}
+async function api(path, opts) {
+  opts = opts || {};
+  const r = await fetch(path, {
+    headers: {'Content-Type': 'application/json'},
+    method: opts.method || 'GET',
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
 }
-async function closeTopicById(id){try{await api(`/api/topics/${id}/close`,{method:'POST'});showToast('Closed')}catch(e){showToast('Error: '+e.message,3000)}}
-async function reopenTopicById(id){try{await api(`/api/topics/${id}/reopen`,{method:'POST'});showToast('Reopened')}catch(e){showToast('Error: '+e.message,3000)}}
 
 // Settings
-let appSettings=JSON.parse(localStorage.getItem('egregore_settings')||'{}');
-function getSetting(k,d){return appSettings[k]??d}
-function setSetting(k,v){appSettings[k]=v;localStorage.setItem('egregore_settings',JSON.stringify(appSettings))}
-function showSettings(){
+let appSettings = {};
+try { appSettings = JSON.parse(localStorage.getItem('egregore_settings') || '{}'); } catch(e) {}
+function getSetting(k, d) { return appSettings[k] !== undefined ? appSettings[k] : d; }
+function setSetting(k, v) { appSettings[k] = v; localStorage.setItem('egregore_settings', JSON.stringify(appSettings)); }
+
+function showSettings() {
+  var providers = ['chatgpt','grok','kimi','qwen','doubao'];
+  var defaults = getSetting('defaultProviders', ['chatgpt','grok']);
+  var html = '';
+  for (var i = 0; i < providers.length; i++) {
+    var p = providers[i];
+    var checked = defaults.indexOf(p) >= 0 ? 'checked' : '';
+    html += '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" value="' + p + '" ' + checked + ' onchange="updateDefaultProviders()"> ' + p + '</label>';
+  }
+  document.getElementById('settingsProviders').innerHTML = html;
   document.getElementById('settingsOverlay').classList.add('show');
-  renderSettings();
-}
-function hideSettings(){document.getElementById('settingsOverlay').classList.remove('show')}
-function renderSettings(){
-  const providers=['chatgpt','grok','kimi','qwen','doubao'];
-  const defaults=getSetting('defaultProviders',['chatgpt','grok']);
-  document.getElementById('settingsProviders').innerHTML=providers.map(p=>
-    `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" value="${p}" ${defaults.includes(p)?'checked':''} onchange="updateDefaultProviders()"> ${p}</label>`
-  ).join('');
-}
-function updateDefaultProviders(){
-  const checked=[...document.querySelectorAll('#settingsProviders input:checked')].map(c=>c.value);
-  setSetting('defaultProviders',checked);
 }
 
-// Render turn
-function renderTurn(prompt,responses,turn){
-const providers=Object.entries(responses);
-return `<div class="message user"><div class="message-bubble">${esc(prompt)}</div>
-<div class="msg-actions"><button class="act" onclick="copyMsg(this)" title="Copy">📋</button><button class="act" onclick="editResend('${esc(prompt).replace(/'/g,"\\'")}')" title="Edit & resend">✎</button></div></div>
-<div class="provider-grid" id="grid-${turn}">${providers.map(([pid,text])=>renderCard(pid,text,true,0,turn)).join('')}</div>`}
+function hideSettings() {
+  document.getElementById('settingsOverlay').classList.remove('show');
+}
 
-// Render card
-function renderCard(pid,text,success,latencyMs,turn){
-const uid=`${turn}-${pid}`;
-const status=success?'<span class="badge badge-ok">✓</span>':'<span class="badge badge-fail">✗</span>';
-const latency=latencyMs>0?`<span class="badge badge-time">${latencyMs.toFixed(0)}ms</span>`:'';
-const summary=success?esc((text||'').substring(0,120))+'...':'Error';
-const html=success?renderMd(text):'<p style="color:var(--red)">Request failed</p>';
-return `<div class="provider-card" id="card-${uid}">
-<div class="card-header" onclick="toggleCard('${uid}')"><span class="provider-name">${esc(pid)}</span><div class="card-meta">${status}${latency}<span class="chevron">▸</span></div></div>
-<div class="card-summary" onclick="toggleCard('${uid}')">${summary}</div>
-<div class="card-full">
-<div class="card-actions">
-<button class="act" onclick="event.stopPropagation();copyCard('${uid}')" title="Copy">📋 Copy</button>
-<button class="act" onclick="event.stopPropagation();openModal('${uid}')" title="Expand">⛶ Expand</button>
-<button class="act" onclick="event.stopPropagation();regenerate('${uid}','${esc(pid)}')" title="Regenerate">↻ Regenerate</button>
-</div>
-<div class="md-content">${html}</div></div></div>`}
+function updateDefaultProviders() {
+  var checked = [];
+  document.querySelectorAll('#settingsProviders input:checked').forEach(function(c) { checked.push(c.value); });
+  setSetting('defaultProviders', checked);
+}
 
-function toggleCard(uid){document.getElementById(`card-${uid}`)?.classList.toggle('expanded')}
-function copyCard(uid){const c=document.getElementById(`card-${uid}`);if(!c)return;const m=c.querySelector('.md-content');if(m)navigator.clipboard.writeText(m.textContent||'').then(()=>showToast('Copied'))}
+// Topics
+async function loadTopics() {
+  try {
+    topics = await api('/api/topics');
+  } catch(e) {
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < topics.length; i++) {
+    var t = topics[i];
+    var active = currentTopic && currentTopic.id === t.id ? 'active' : '';
+    html += '<div class="topic-item ' + active + '" onclick="selectTopic(\'' + t.id + '\')">';
+    html += '<div><div class="topic-title">' + esc(t.title) + '</div>';
+    html += '<div class="topic-meta">' + t.providers.join(', ') + '</div></div>';
+    html += '<button class="ib" onclick="event.stopPropagation();deleteTopicById(\'' + t.id + '\')" title="Delete">✕</button>';
+    html += '</div>';
+  }
+  document.getElementById('topicList').innerHTML = html;
+}
 
-// Copy user message
-function copyMsg(btn){const msg=btn.closest('.message');const bubble=msg.querySelector('.message-bubble');navigator.clipboard.writeText(bubble.textContent||'').then(()=>showToast('Copied'))}
+async function selectTopic(id) {
+  for (var i = 0; i < topics.length; i++) {
+    if (topics[i].id === id) { currentTopic = topics[i]; break; }
+  }
+  if (!currentTopic) return;
+  document.getElementById('mainTitle').textContent = currentTopic.title;
+  document.getElementById('inputArea').style.display = 'block';
+  await loadResponses(id);
+  loadTopics();
+}
 
-// Edit & resend
-function editResend(text){const input=document.getElementById('promptInput');input.value=text;input.focus();showToast('Edit and press Enter to resend')}
+async function loadResponses(id) {
+  var r;
+  try { r = await api('/api/topics/' + id + '/responses'); } catch(e) { return; }
+  var area = document.getElementById('chatArea');
+  if (!r.length) {
+    area.innerHTML = '<div class="empty-state"><p>No responses yet. Send a prompt.</p></div>';
+    return;
+  }
+  turnCounter = 0;
+  var html = '';
+  for (var i = 0; i < r.length; i++) {
+    turnCounter++;
+    html += renderTurn(r[i].prompt, r[i].responses || {}, turnCounter);
+  }
+  area.innerHTML = html;
+  area.scrollTop = area.scrollHeight;
+}
 
-// Regenerate a single provider
-async function regenerate(uid,pid){const card=document.getElementById(`card-${uid}`);if(!card||!currentTopic)return;card.innerHTML=`<div class="card-header"><span class="provider-name">${esc(pid)}</span><div class="card-meta"><span class="badge badge-wait">⏳</span></div></div><div class="card-summary"><div class="loading-bubble" style="padding:0"><div class="spinner"></div><span class="loading-text">Regenerating...</span></div></div>`;try{const resp=await fetch(`/api/topics/${currentTopic.id}/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:'(regenerate)',providers:[pid]})});if(!resp.ok)throw new Error('Failed');showToast('Regenerated')}catch{showToast('Regeneration failed')}}
+// Topic actions
+async function deleteTopicById(id) {
+  if (!confirm('Delete this topic?')) return;
+  try {
+    await api('/api/topics/' + id, {method: 'DELETE'});
+    if (currentTopic && currentTopic.id === id) {
+      currentTopic = null;
+      document.getElementById('mainTitle').textContent = 'Select a topic';
+      document.getElementById('inputArea').style.display = 'none';
+      document.getElementById('chatArea').innerHTML = '<div class="empty-state"><div class="icon">⬡</div><p>Create a topic to get started</p></div>';
+    }
+    showToast('Deleted');
+    await loadTopics();
+  } catch(e) {
+    showToast('Error: ' + e.message, 3000);
+  }
+}
+
+// Render
+function renderTurn(prompt, responses, turn) {
+  var providers = Object.entries(responses);
+  var html = '<div class="message user"><div class="message-bubble">' + esc(prompt) + '</div>';
+  html += '<div class="msg-actions"><button onclick="copyMsg(this)">📋</button>';
+  html += '<button onclick="editResend(\'' + esc(prompt).replace(/'/g, "\\'") + '\')">✎</button></div></div>';
+  html += '<div class="provider-grid">';
+  for (var i = 0; i < providers.length; i++) {
+    html += renderCard(providers[i][0], providers[i][1], true, 0, turn);
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderCard(pid, text, success, latencyMs, turn) {
+  var uid = turn + '-' + pid;
+  var status = success ? '<span class="badge badge-ok">✓</span>' : '<span class="badge badge-fail">✗</span>';
+  var summary = success ? esc((text || '').substring(0, 120)) + '...' : 'Error';
+  var html = success ? renderMd(text) : '<p style="color:var(--red)">Request failed</p>';
+  return '<div class="provider-card" id="card-' + uid + '">'
+    + '<div class="card-header" onclick="toggleCard(\'' + uid + '\')">'
+    + '<span class="provider-name">' + esc(pid) + '</span>'
+    + '<div class="card-meta">' + status + '<span class="chevron">▸</span></div></div>'
+    + '<div class="card-summary" onclick="toggleCard(\'' + uid + '\')">' + summary + '</div>'
+    + '<div class="card-full"><div class="card-actions">'
+    + '<button onclick="event.stopPropagation();copyCard(\'' + uid + '\')">📋 Copy</button>'
+    + '<button onclick="event.stopPropagation();openModal(\'' + uid + '\')">⛶ Expand</button>'
+    + '</div><div class="md-content">' + html + '</div></div></div>';
+}
+
+function toggleCard(uid) {
+  var el = document.getElementById('card-' + uid);
+  if (el) el.classList.toggle('expanded');
+}
+
+function copyCard(uid) {
+  var c = document.getElementById('card-' + uid);
+  if (!c) return;
+  var m = c.querySelector('.md-content');
+  if (m) navigator.clipboard.writeText(m.textContent || '').then(function() { showToast('Copied'); });
+}
+
+function copyMsg(btn) {
+  var msg = btn.closest('.message');
+  var bubble = msg.querySelector('.message-bubble');
+  navigator.clipboard.writeText(bubble.textContent || '').then(function() { showToast('Copied'); });
+}
+
+function editResend(text) {
+  var input = document.getElementById('promptInput');
+  input.value = text;
+  input.focus();
+  showToast('Edit and press Enter to resend');
+}
 
 // Modal
-function openModal(uid){const c=document.getElementById(`card-${uid}`);if(!c)return;const m=c.querySelector('.md-content');const name=uid.split('-').slice(1).join('-');document.getElementById('modalTitle').textContent=name;document.getElementById('modalBody').innerHTML=m?m.innerHTML:'';modalRawText=m?m.textContent:'';document.getElementById('modalOverlay').classList.add('show')}
-function closeModal(){document.getElementById('modalOverlay').classList.remove('show')}
-function copyModalContent(){navigator.clipboard.writeText(modalRawText).then(()=>showToast('Copied'))}
-
-// Send with SSE
-async function sendPrompt(){
-const input=document.getElementById('promptInput'),prompt=input.value.trim();
-if(!prompt||!currentTopic)return;
-const btn=document.getElementById('sendBtn');btn.disabled=true;btn.textContent='…';input.value='';
-turnCounter++;const turn=turnCounter;
-const area=document.getElementById('chatArea');
-
-// Show user message + loading grid
-area.innerHTML+=`<div class="message user"><div class="message-bubble">${esc(prompt)}</div>
-<div class="msg-actions"><button class="act" onclick="copyMsg(this)" title="Copy">📋</button><button class="act" onclick="editResend('${esc(prompt).replace(/'/g,"\\'")}')" title="Edit & resend">✎</button></div></div>
-<div class="provider-grid" id="grid-${turn}">${currentTopic.providers.map(p=>`<div class="provider-card" id="card-${turn}-${p}"><div class="card-header"><span class="provider-name">${esc(p)}</span><div class="card-meta"><span class="badge badge-wait">⏳</span></div></div><div class="card-summary"><div class="loading-bubble" style="padding:0"><div class="spinner"></div><span class="loading-text">Waiting...</span></div></div></div>`).join('')}</div>`;
-area.scrollTop=area.scrollHeight;
-
-try{
-const resp=await fetch(`/api/topics/${currentTopic.id}/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
-const reader=resp.body.getReader();const decoder=new TextDecoder();let buffer='';
-
-while(true){
-const{done,value}=await reader.read();if(done)break;
-buffer+=decoder.decode(value,{stream:true});
-const lines=buffer.split('\n');buffer=lines.pop()||'';
-for(const line of lines){
-if(!line.startsWith('data: '))continue;
-const data=line.slice(6);
-if(data==='[DONE]')continue;
-try{
-const r=JSON.parse(data);
-const uid=`${turn}-${r.provider}`;
-const card=document.getElementById(`card-${uid}`);
-if(card){
-const status=r.success?'<span class="badge badge-ok">✓</span>':'<span class="badge badge-fail">✗</span>';
-const html=r.success?renderMd(r.content):'<p style="color:var(--red)">Error</p>';
-const summary=r.success?esc((r.content||'').substring(0,120))+'...':'Error';
-card.innerHTML=`<div class="card-header" onclick="toggleCard('${uid}')"><span class="provider-name">${esc(r.provider)}</span><div class="card-meta">${status}<span class="chevron">▸</span></div></div>
-<div class="card-summary" onclick="toggleCard('${uid}')">${summary}</div>
-<div class="card-full"><div class="card-actions">
-<button class="act" onclick="event.stopPropagation();copyCard('${uid}')" title="Copy">📋 Copy</button>
-<button class="act" onclick="event.stopPropagation();openModal('${uid}')" title="Expand">⛶ Expand</button>
-<button class="act" onclick="event.stopPropagation();regenerate('${uid}','${esc(r.provider)}')" title="Regenerate">↻ Regenerate</button>
-</div><div class="md-content">${html}</div></div>`;
-area.scrollTop=area.scrollHeight;
-}}catch{}}}
-}catch(e){showToast('Error: '+e.message,3000)}finally{btn.disabled=false;btn.textContent='↑'}}
-
-// Actions
-function showCreate(){
-  // Update checkboxes from settings
-  const defaults=getSetting('defaultProviders',['chatgpt','grok']);
-  document.querySelectorAll('.create-modal .checkbox-group input').forEach(cb=>{cb.checked=defaults.includes(cb.value)});
-  document.getElementById('createOverlay').classList.add('show');document.getElementById('newTitle').focus();
+function openModal(uid) {
+  var c = document.getElementById('card-' + uid);
+  if (!c) return;
+  var m = c.querySelector('.md-content');
+  var name = uid.split('-').slice(1).join('-');
+  document.getElementById('modalTitle').textContent = name;
+  document.getElementById('modalBody').innerHTML = m ? m.innerHTML : '';
+  modalRawText = m ? m.textContent : '';
+  document.getElementById('modalOverlay').classList.add('show');
 }
-function hideCreate(){document.getElementById('createOverlay').classList.remove('show')}
-async function createTopic(){const t=document.getElementById('newTitle').value.trim();if(!t)return;const p=[...document.querySelectorAll('.checkbox-group input:checked')].map(c=>c.value);if(!p.length)return;await api('/api/topics',{method:'POST',body:{title:t,providers:p}});document.getElementById('newTitle').value='';hideCreate();await loadTopics();showToast('Created')}
 
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+
+function copyModalContent() {
+  navigator.clipboard.writeText(modalRawText).then(function() { showToast('Copied'); });
+}
+
+// Send
+async function sendPrompt() {
+  var input = document.getElementById('promptInput');
+  var prompt = input.value.trim();
+  if (!prompt || !currentTopic) return;
+
+  var btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.textContent = '…';
+  input.value = '';
+  turnCounter++;
+  var turn = turnCounter;
+  var area = document.getElementById('chatArea');
+
+  // Show user message
+  var userHtml = '<div class="message user"><div class="message-bubble">' + esc(prompt) + '</div>';
+  userHtml += '<div class="msg-actions"><button onclick="copyMsg(this)">📋</button>';
+  userHtml += '<button onclick="editResend(\'' + esc(prompt).replace(/'/g, "\\'") + '\')">✎</button></div></div>';
+
+  // Show loading cards
+  var gridHtml = '<div class="provider-grid">';
+  for (var i = 0; i < currentTopic.providers.length; i++) {
+    var p = currentTopic.providers[i];
+    gridHtml += '<div class="provider-card" id="card-' + turn + '-' + p + '">';
+    gridHtml += '<div class="card-header"><span class="provider-name">' + esc(p) + '</span>';
+    gridHtml += '<div class="card-meta"><span class="badge badge-wait">⏳</span></div></div>';
+    gridHtml += '<div class="card-summary"><div class="loading-bubble" style="padding:0">';
+    gridHtml += '<div class="spinner"></div><span class="loading-text">Waiting...</span></div></div></div>';
+  }
+  gridHtml += '</div>';
+
+  area.innerHTML += userHtml + gridHtml;
+  area.scrollTop = area.scrollHeight;
+
+  try {
+    var resp = await fetch('/api/topics/' + currentTopic.id + '/send', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt: prompt})
+    });
+
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, {stream: true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (var j = 0; j < lines.length; j++) {
+        var line = lines[j];
+        if (!line.startsWith('data: ')) continue;
+        var data = line.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          var r = JSON.parse(data);
+          var uid = turn + '-' + r.provider;
+          var card = document.getElementById('card-' + uid);
+          if (card) {
+            var status = r.success ? '<span class="badge badge-ok">✓</span>' : '<span class="badge badge-fail">✗</span>';
+            var contentHtml = r.success ? renderMd(r.content) : '<p style="color:var(--red)">Error</p>';
+            var summ = r.success ? esc((r.content || '').substring(0, 120)) + '...' : 'Error';
+            card.innerHTML = '<div class="card-header" onclick="toggleCard(\'' + uid + '\')">'
+              + '<span class="provider-name">' + esc(r.provider) + '</span>'
+              + '<div class="card-meta">' + status + '<span class="chevron">▸</span></div></div>'
+              + '<div class="card-summary" onclick="toggleCard(\'' + uid + '\')">' + summ + '</div>'
+              + '<div class="card-full"><div class="card-actions">'
+              + '<button onclick="event.stopPropagation();copyCard(\'' + uid + '\')">📋 Copy</button>'
+              + '<button onclick="event.stopPropagation();openModal(\'' + uid + '\')">⛶ Expand</button>'
+              + '</div><div class="md-content">' + contentHtml + '</div></div>';
+            area.scrollTop = area.scrollHeight;
+          }
+        } catch(e) { /* ignore parse errors */ }
+      }
+    }
+  } catch(e) {
+    showToast('Error: ' + e.message, 3000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↑';
+  }
+}
+
+// Create
+function showCreate() {
+  var defaults = getSetting('defaultProviders', ['chatgpt','grok']);
+  document.querySelectorAll('.modal-sm .checkbox-group input').forEach(function(cb) {
+    cb.checked = defaults.indexOf(cb.value) >= 0;
+  });
+  document.getElementById('createOverlay').classList.add('show');
+  document.getElementById('newTitle').focus();
+}
+
+function hideCreate() {
+  document.getElementById('createOverlay').classList.remove('show');
+}
+
+async function createTopic() {
+  var t = document.getElementById('newTitle').value.trim();
+  if (!t) return;
+  var p = [];
+  document.querySelectorAll('.checkbox-group input:checked').forEach(function(c) { p.push(c.value); });
+  if (!p.length) return;
+  await api('/api/topics', {method: 'POST', body: {title: t, providers: p}});
+  document.getElementById('newTitle').value = '';
+  hideCreate();
+  await loadTopics();
+  showToast('Created');
+}
+
+// Init
 loadTopics();
 </script>
 </body>

@@ -7,7 +7,7 @@ Architecture:
         ↓
     BrowserManager (page pool)
         ↓
-    CdpTransport (Chrome CDP)
+    BrowserTransport (Chrome CDP)
 
 TopicManager owns the lifecycle. TopicRuntime owns the live state.
 """
@@ -19,7 +19,7 @@ from dataclasses import dataclass
 import structlog
 
 from egregore.providers.browser_manager import BrowserManager
-from egregore.providers.cdp_transport import CdpTransport
+from egregore.providers.cdp_transport import BrowserTransport
 from egregore.synthesis.store import ResponseStore
 from egregore.topic.events import TopicEventStore, TopicEventType
 from egregore.topic.models import Topic
@@ -43,7 +43,7 @@ class TopicManager:
 
     def __init__(
         self,
-        transport: CdpTransport,
+        transport: BrowserTransport,
         store: TopicStore,
         event_store: TopicEventStore,
         browser_manager: BrowserManager,

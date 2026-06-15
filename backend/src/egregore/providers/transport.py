@@ -7,7 +7,7 @@ Architecture:
     Provider → Transport → Platform
 
 Implementations:
-    CdpTransport      — connects to user's Chrome via CDP
+    BrowserTransport   — connects to user's Chrome via CDP
     ExtensionTransport — communicates with browser extension (future)
     ApiTransport      — direct API calls (future)
 
