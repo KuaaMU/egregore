@@ -131,15 +131,25 @@ class BrowserTransport:
         return last_text
 
     async def _extract_latest_response(self, page: Page) -> str:
+        """Extract the latest assistant response from the page.
+
+        Uses platform-specific selectors, ordered by specificity.
+        Avoids overly broad selectors that capture page metadata.
+        """
         selectors = [
+            # ChatGPT — most specific
             "[data-message-author-role='assistant']:last-of-type",
             ".markdown.prose:last-of-type",
+            # Grok
             "[data-testid*='assistant']:last-of-type",
             ".message-bubble:last-of-type",
+            # Kimi
             ".markdown:last-of-type",
-            "[class*='markdown']:last-of-type",
-            "[class*='answer']:last-of-type",
-            "[aria-label='doc_editor']",
+            # Qwen — use specific class, not broad [class*='markdown']
+            ".qk-markdown:last-of-type",
+            "[class*='answer-common-card']:last-of-type",
+            # Doubao — use message container
+            "[class*='message-list'] > div:last-child",
         ]
         for selector in selectors:
             try:
@@ -147,11 +157,35 @@ class BrowserTransport:
                 count = await elements.count()
                 if count > 0:
                     text = await elements.nth(count - 1).text_content()
-                    if text and len(text.strip()) > 0:
-                        return text.strip()
+                    if text and len(text.strip()) > 10:
+                        # Filter out garbage (JSON, video data, etc.)
+                        cleaned = self._clean_response(text.strip())
+                        if cleaned:
+                            return cleaned
             except Exception:
                 continue
         return ""
+
+    def _clean_response(self, text: str) -> str:
+        """Filter out garbage from extracted text.
+
+        Some platforms embed JSON metadata, video recommendations, etc.
+        We only want the actual response text.
+        """
+        # Skip if it looks like JSON
+        if text.startswith('{') or text.startswith('['):
+            return ""
+        # Skip if it contains too much structured data
+        if '{"data":' in text or '"initialData"' in text:
+            # Try to extract just the text before the JSON
+            idx = text.find('{"data":')
+            if idx > 50:
+                return text[:idx].strip()
+            return ""
+        # Skip very short garbage
+        if len(text.strip()) < 5:
+            return ""
+        return text
 
     async def _get_content_length(self, page: Page) -> int:
         try:

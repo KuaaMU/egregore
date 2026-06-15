@@ -377,11 +377,27 @@ function editResendFromEl(btn) {
   editResend(prompt);
 }
 
+function getProviderUrl(pid) {
+  var urls = {
+    chatgpt: 'https://chatgpt.com/',
+    grok: 'https://grok.com/',
+    kimi: 'https://kimi.moonshot.cn/',
+    qwen: 'https://tongyi.aliyun.com/qianwen/',
+    doubao: 'https://www.doubao.com/'
+  };
+  // Use saved conversation URL if available
+  if (currentTopic && currentTopic.urls && currentTopic.urls[pid]) {
+    return currentTopic.urls[pid];
+  }
+  return urls[pid] || '#';
+}
+
 function renderCard(pid, text, success, latencyMs, turn) {
   var uid = turn + '-' + pid;
   var status = success ? '<span class="badge badge-ok">✓</span>' : '<span class="badge badge-fail">✗</span>';
   var summary = success ? esc((text || '').substring(0, 120)) + '...' : 'Error';
   var html = success ? renderMd(text) : '<p style="color:var(--red)">Request failed</p>';
+  var providerUrl = getProviderUrl(pid);
   return '<div class="provider-card" id="card-' + uid + '">'
     + '<div class="card-header" onclick="toggleCard(\'' + uid + '\')">'
     + '<span class="provider-name">' + esc(pid) + '</span>'
@@ -390,6 +406,7 @@ function renderCard(pid, text, success, latencyMs, turn) {
     + '<div class="card-full"><div class="card-actions">'
     + '<button onclick="event.stopPropagation();copyCard(\'' + uid + '\')">📋 Copy</button>'
     + '<button onclick="event.stopPropagation();openModal(\'' + uid + '\')">⛶ Expand</button>'
+    + '<button onclick="event.stopPropagation();window.open(\'' + providerUrl + '\',\'_blank\')">↗ Open</button>'
     + '</div><div class="md-content">' + html + '</div></div></div>';
 }
 
@@ -544,12 +561,15 @@ function hideCreate() {
   document.getElementById('createOverlay').classList.remove('show');
 }
 
+var creating = false;
 async function createTopic() {
+  if (creating) return;
   var t = document.getElementById('newTitle').value.trim();
   if (!t) return;
   var p = [];
   document.querySelectorAll('.checkbox-group input:checked').forEach(function(c) { p.push(c.value); });
   if (!p.length) return;
+  creating = true;
   try {
     await api('/api/topics', {method: 'POST', body: {title: t, providers: p}});
     document.getElementById('newTitle').value = '';
@@ -558,6 +578,8 @@ async function createTopic() {
     showToast('Created');
   } catch(e) {
     showToast('Error: ' + e.message, 3000);
+  } finally {
+    creating = false;
   }
 }
 
