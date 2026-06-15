@@ -257,11 +257,7 @@ a{color:var(--accent);text-decoration:none}
     </div>
     <div class="setting-row">
       <div><div class="setting-label">Default Providers</div><div class="setting-desc">Pre-selected when creating topics</div></div>
-      <span style="font-size:12px;color:var(--dim)">ChatGPT, Grok</span>
-    </div>
-    <div class="setting-row">
-      <div><div class="setting-label">Auto-reopen</div><div class="setting-desc">Automatically reopen topic on send</div></div>
-      <button class="toggle on" id="autoReopenToggle"></button>
+      <div id="settingsProviders" style="display:flex;flex-wrap:wrap;gap:10px"></div>
     </div>
     <div style="margin-top:16px;text-align:right">
       <button class="btn-cancel" onclick="hideSettings()" style="padding:8px 16px;border-radius:8px;cursor:pointer">Close</button>
@@ -303,9 +299,30 @@ const a=document.getElementById('chatArea');if(!r.length){a.innerHTML='<div clas
 turnCounter=0;let html='';for(const set of r){turnCounter++;html+=renderTurn(set.prompt,set.responses||{},turnCounter)}a.innerHTML=html;a.scrollTop=a.scrollHeight}
 
 // Context menu
-function showCtxMenu(e,id){ctxTopicId=id;const m=document.getElementById('contextMenu');m.style.left=e.clientX+'px';m.style.top=e.clientY+'px';m.classList.add('show');setTimeout(()=>document.addEventListener('click',hideCtxMenu,{once:true}),0)}
+function showCtxMenu(e,id){ctxTopicId=id;const m=document.getElementById('contextMenu');m.style.left=e.clientX+'px';m.style.top=e.clientY+'px';m.classList.add('show');e.stopPropagation();setTimeout(()=>document.addEventListener('click',hideCtxMenu,{once:true}),10)}
 function hideCtxMenu(){document.getElementById('contextMenu').classList.remove('show')}
-async function ctxAction(action){hideCtxMenu();if(!ctxTopicId)return;if(action==='delete'){if(!confirm('Delete this topic?'))return;await api(`/api/topics/${ctxTopicId}`,{method:'DELETE'});if(currentTopic?.id===ctxTopicId){currentTopic=null;document.getElementById('mainTitle').textContent='Select a topic';document.getElementById('inputArea').style.display='none';document.getElementById('chatArea').innerHTML='<div class="empty-state"><div class="icon">⬡</div><p>Create a topic to get started</p></div>'}showToast('Deleted')}else if(action==='close'){await api(`/api/topics/${ctxTopicId}/close`,{method:'POST'});showToast('Closed')}else if(action==='reopen'){await api(`/api/topics/${ctxTopicId}/reopen`,{method:'POST'});showToast('Reopened')}await loadTopics()}
+async function ctxAction(action){hideCtxMenu();if(!ctxTopicId)return;try{if(action==='delete'){if(!confirm('Delete this topic?'))return;await api(`/api/topics/${ctxTopicId}`,{method:'DELETE'});if(currentTopic?.id===ctxTopicId){currentTopic=null;document.getElementById('mainTitle').textContent='Select a topic';document.getElementById('inputArea').style.display='none';document.getElementById('chatArea').innerHTML='<div class="empty-state"><div class="icon">⬡</div><p>Create a topic to get started</p></div>'}showToast('Deleted')}else if(action==='close'){await api(`/api/topics/${ctxTopicId}/close`,{method:'POST'});showToast('Closed')}else if(action==='reopen'){await api(`/api/topics/${ctxTopicId}/reopen`,{method:'POST'});showToast('Reopened')}}catch(e){showToast('Error: '+e.message,3000)}await loadTopics()}
+
+// Settings
+let appSettings=JSON.parse(localStorage.getItem('egregore_settings')||'{}');
+function getSetting(k,d){return appSettings[k]??d}
+function setSetting(k,v){appSettings[k]=v;localStorage.setItem('egregore_settings',JSON.stringify(appSettings))}
+function showSettings(){
+  document.getElementById('settingsOverlay').classList.add('show');
+  renderSettings();
+}
+function hideSettings(){document.getElementById('settingsOverlay').classList.remove('show')}
+function renderSettings(){
+  const providers=['chatgpt','grok','kimi','qwen','doubao'];
+  const defaults=getSetting('defaultProviders',['chatgpt','grok']);
+  document.getElementById('settingsProviders').innerHTML=providers.map(p=>
+    `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" value="${p}" ${defaults.includes(p)?'checked':''} onchange="updateDefaultProviders()"> ${p}</label>`
+  ).join('');
+}
+function updateDefaultProviders(){
+  const checked=[...document.querySelectorAll('#settingsProviders input:checked')].map(c=>c.value);
+  setSetting('defaultProviders',checked);
+}
 
 // Settings
 function showSettings(){document.getElementById('settingsOverlay').classList.add('show')}
@@ -399,7 +416,12 @@ area.scrollTop=area.scrollHeight;
 }catch(e){showToast('Error: '+e.message,3000)}finally{btn.disabled=false;btn.textContent='↑'}}
 
 // Actions
-function showCreate(){document.getElementById('createOverlay').classList.add('show');document.getElementById('newTitle').focus()}
+function showCreate(){
+  // Update checkboxes from settings
+  const defaults=getSetting('defaultProviders',['chatgpt','grok']);
+  document.querySelectorAll('.create-modal .checkbox-group input').forEach(cb=>{cb.checked=defaults.includes(cb.value)});
+  document.getElementById('createOverlay').classList.add('show');document.getElementById('newTitle').focus();
+}
 function hideCreate(){document.getElementById('createOverlay').classList.remove('show')}
 async function createTopic(){const t=document.getElementById('newTitle').value.trim();if(!t)return;const p=[...document.querySelectorAll('.checkbox-group input:checked')].map(c=>c.value);if(!p.length)return;await api('/api/topics',{method:'POST',body:{title:t,providers:p}});document.getElementById('newTitle').value='';hideCreate();await loadTopics();showToast('Created')}
 

@@ -22,7 +22,7 @@ DB_PATH = Path.home() / ".egregore" / "topics.db"
 
 
 def create_web_app() -> FastAPI:
-    app = FastAPI(title="Egregore", version="0.5.0")
+    app = FastAPI(title="Egregore", version="0.5.1")
 
     store = TopicStore(DB_PATH)
     event_store = TopicEventStore(store._conn)
@@ -54,6 +54,7 @@ def create_web_app() -> FastAPI:
             "id": t.id,
             "title": t.title,
             "providers": t.providers,
+            "urls": t.urls,
             "pinned": t.pinned,
             "last_accessed": t.last_accessed.isoformat(),
         } for t in topics]
@@ -63,7 +64,7 @@ def create_web_app() -> FastAPI:
         title = body.get("title", "Untitled")
         providers = body.get("providers", ["chatgpt", "grok"])
         topic = await manager.create(title, providers)
-        return {"id": topic.id, "title": topic.title, "providers": topic.providers}
+        return {"id": topic.id, "title": topic.title, "providers": topic.providers, "urls": topic.urls}
 
     @app.post("/api/topics/{topic_id}/send")
     async def send_prompt(topic_id: str, body: dict):
@@ -72,6 +73,7 @@ def create_web_app() -> FastAPI:
         if not prompt:
             return {"error": "No prompt"}
 
+        # Auto-reopen
         try:
             await manager.reopen(topic_id)
         except Exception:
@@ -81,9 +83,19 @@ def create_web_app() -> FastAPI:
         if not topic:
             return {"error": "Topic not found"}
 
+        PROVIDER_URLS = {
+            "chatgpt": "https://chatgpt.com/",
+            "grok": "https://grok.com/",
+            "kimi": "https://kimi.moonshot.cn/",
+            "qwen": "https://tongyi.aliyun.com/qianwen/",
+            "doubao": "https://www.doubao.com/",
+        }
+
         async def event_stream():
+            url_updates = {}
+
             async def send_one(provider: str):
-                url = topic.get_url(provider) or ""
+                url = topic.get_url(provider) or PROVIDER_URLS.get(provider, "")
                 try:
                     page = await transport._browser_manager.get_page(url)
                     old_response = await transport._extract_latest_response(page)
@@ -99,6 +111,11 @@ def create_web_app() -> FastAPI:
                     await page.keyboard.press("Enter")
 
                     content = await transport._wait_for_response(page, 60000, old_response, old_content_len)
+
+                    # Capture conversation URL after sending
+                    new_url = page.url
+                    if new_url and new_url != url and "/c/" in new_url or "/chat/" in new_url:
+                        url_updates[provider] = new_url
 
                     images = []
                     try:
@@ -124,6 +141,10 @@ def create_web_app() -> FastAPI:
                 completed.append(result)
                 yield f"data: {json.dumps(result, ensure_ascii=False)}\n\n"
 
+            # Save URL updates
+            for provider, new_url in url_updates.items():
+                topic.set_url(provider, new_url)
+
             # Save all responses
             response_dict = {r["provider"]: r["content"] for r in completed if r["success"]}
             if response_dict:
@@ -144,10 +165,16 @@ def create_web_app() -> FastAPI:
     @app.post("/api/topics/{topic_id}/reopen")
     async def reopen_topic(topic_id: str):
         topic = await manager.reopen(topic_id)
-        return {"id": topic.id, "title": topic.title}
+        return {"id": topic.id, "title": topic.title, "urls": topic.urls}
 
     @app.delete("/api/topics/{topic_id}")
     async def delete_topic(topic_id: str):
+        # Close runtime first
+        try:
+            await manager.close(topic_id)
+        except Exception:
+            pass
+        # Delete from store
         manager.delete_topic(topic_id)
         return {"deleted": topic_id}
 
@@ -158,5 +185,15 @@ def create_web_app() -> FastAPI:
     @app.get("/api/topics/{topic_id}/responses")
     async def get_responses(topic_id: str):
         return response_store.load(topic_id)
+
+    def _provider_url(provider: str) -> str:
+        urls = {
+            "chatgpt": "https://chatgpt.com/",
+            "grok": "https://grok.com/",
+            "kimi": "https://kimi.moonshot.cn/",
+            "qwen": "https://tongyi.aliyun.com/qianwen/",
+            "doubao": "https://www.doubao.com/",
+        }
+        return urls.get(provider, "")
 
     return app
