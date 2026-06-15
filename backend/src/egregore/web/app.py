@@ -33,10 +33,14 @@ def create_web_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup():
-        await ensure_browser()
-        transport._browser_manager._browser = None
-        transport._browser_manager._playwright = None
-        await transport.connect()
+        try:
+            await ensure_browser()
+        except Exception:
+            pass
+        try:
+            await transport.connect()
+        except Exception:
+            pass
 
     @app.on_event("shutdown")
     async def shutdown():

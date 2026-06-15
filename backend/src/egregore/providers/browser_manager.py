@@ -1,17 +1,8 @@
 """BrowserManager — manages browser pages, reuses tabs.
 
-Current problem: every send() opens a new tab.
-Solution: BrowserManager maintains a page pool.
-
-Architecture:
-    BrowserManager
-        ├── chatgpt_page → reuses same tab
-        ├── grok_page → reuses same tab
-        ├── kimi_page → reuses same tab
-        ├── qwen_page → reuses same tab
-        └── doubao_page → reuses same tab
-
-The entire program lifecycle: no new tabs. Silent.
+Key design: auto-reconnect on any browser error.
+The browser connection can die at any time (user closes Chrome,
+system sleeps, network changes). We handle this gracefully.
 """
 
 from __future__ import annotations
@@ -27,71 +18,106 @@ DEFAULT_CDP_URL = "http://127.0.0.1:9222"
 
 
 class BrowserManager:
-    """Manages browser pages. Reuses tabs. Silent operation."""
+    """Manages browser pages with auto-reconnect."""
 
     def __init__(self, cdp_url: str = DEFAULT_CDP_URL) -> None:
         self._cdp_url = cdp_url
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
-        self._pages: dict[str, Page] = {}  # url_pattern -> page
+        self._pages: dict[str, Page] = {}
+        self._connecting = False
 
     async def connect(self) -> None:
-        """Connect to Chrome via CDP."""
-        if self._playwright is not None:
+        """Connect to Chrome via CDP. Idempotent."""
+        if self._connecting:
+            # Wait for ongoing connection
+            for _ in range(30):
+                await asyncio.sleep(0.5)
+                if self._browser:
+                    return
+            raise RuntimeError("Connection timeout")
+
+        if self._browser:
             return
 
-        self._playwright = await async_playwright().start()
+        self._connecting = True
         try:
-            self._browser = await self._playwright.chromium.connect_over_cdp(self._cdp_url)
-            logger.info("browser_manager_connected", cdp_url=self._cdp_url)
-        except Exception as e:
-            raise RuntimeError(
-                f"Cannot connect to Chrome at {self._cdp_url}. "
-                f"Start Chrome with: --remote-debugging-port=9222"
-            ) from e
-
-    async def _ensure_browser(self) -> Browser:
-        """Ensure browser connection is alive. Reconnect if needed."""
-        if self._browser is None:
-            await self.connect()
-            return self._browser
-
-        try:
-            # Test if browser is still connected
-            _ = self._browser.contexts
-            return self._browser
-        except Exception:
-            # Connection lost — full reconnect
-            logger.info("browser_reconnecting")
-            self._pages.clear()
-            self._browser = None
+            # Clean up old playwright
             if self._playwright:
                 try:
                     await self._playwright.stop()
                 except Exception:
                     pass
                 self._playwright = None
+
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.connect_over_cdp(self._cdp_url)
+            self._pages.clear()
+            logger.info("browser_connected", cdp_url=self._cdp_url)
+        except Exception as e:
+            self._browser = None
+            raise RuntimeError(f"Cannot connect to Chrome: {e}") from e
+        finally:
+            self._connecting = False
+
+    async def _ensure_browser(self) -> Browser:
+        """Ensure browser is connected. Reconnect if needed."""
+        if self._browser:
+            try:
+                # Quick health check
+                _ = self._browser.contexts
+                return self._browser
+            except Exception:
+                logger.info("browser_connection_lost")
+                self._browser = None
+                self._pages.clear()
+
+        if not self._browser:
             await self.connect()
-            return self._browser
+
+        return self._browser
 
     async def get_page(self, url: str) -> Page:
         """Get or create a page for the given URL."""
         browser = await self._ensure_browser()
 
         # Check cache
-        if url in self._pages and not self._pages[url].is_closed():
-            return self._pages[url]
+        cached = self._pages.get(url)
+        if cached:
+            try:
+                if not cached.is_closed():
+                    return cached
+            except Exception:
+                pass
+            self._pages.pop(url, None)
 
         # Search existing tabs
-        for context in browser.contexts:
-            for page in context.pages:
-                if url in page.url:
-                    self._pages[url] = page
-                    logger.info("page_reused", url=url)
-                    return page
+        try:
+            for context in browser.contexts:
+                for page in context.pages:
+                    try:
+                        if url in page.url:
+                            self._pages[url] = page
+                            logger.info("page_reused", url=url)
+                            return page
+                    except Exception:
+                        continue
+        except Exception:
+            # Browser died during search — reconnect
+            await self.connect()
+            browser = self._browser
 
         # Create new tab
-        context = browser.contexts[0] if browser.contexts else await browser.new_context()
+        try:
+            contexts = browser.contexts
+            context = contexts[0] if contexts else await browser.new_context()
+        except Exception:
+            # Context creation failed — reconnect and retry
+            await self.connect()
+            browser = self._browser
+            contexts = browser.contexts
+            context = contexts[0] if contexts else await browser.new_context()
+
         page = await context.new_page()
         await page.goto(url, wait_until="domcontentloaded")
         self._pages[url] = page
@@ -102,9 +128,13 @@ class BrowserManager:
         """Disconnect. Does NOT close user's browser."""
         self._pages.clear()
         if self._playwright:
-            await self._playwright.stop()
+            try:
+                await self._playwright.stop()
+            except Exception:
+                pass
             self._playwright = None
-        logger.info("browser_manager_disconnected")
+        self._browser = None
+        logger.info("browser_disconnected")
 
     @property
     def is_connected(self) -> bool:
