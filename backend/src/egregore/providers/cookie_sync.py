@@ -61,18 +61,25 @@ def sync_cookies(chrome_profile: Path, egregore_profile: Path) -> int:
         logger.error("chrome_profile_not_found", path=str(chrome_profile))
         return 0
 
-    # Copy cookies database
-    cookies_src = default_profile / "Cookies"
+    # Copy cookies database (Chrome stores it in Network/Cookies)
+    cookies_src = default_profile / "Network" / "Cookies"
+    if not cookies_src.exists():
+        # Fallback: try Default/Cookies (older Chrome versions)
+        cookies_src = default_profile / "Cookies"
     if not cookies_src.exists():
         logger.error("cookies_not_found", path=str(cookies_src))
         return 0
+
+    # Ensure Network directory exists in destination
+    network_dst = egregore_default / "Network"
+    network_dst.mkdir(parents=True, exist_ok=True)
 
     # Create Egregore Default profile
     egregore_default = egregore_profile / "Default"
     egregore_default.mkdir(parents=True, exist_ok=True)
 
     # Copy cookies
-    cookies_dst = egregore_default / "Cookies"
+    cookies_dst = network_dst / "Cookies"
     shutil.copy2(cookies_src, cookies_dst)
 
     # Copy Local State (needed for cookie decryption)
