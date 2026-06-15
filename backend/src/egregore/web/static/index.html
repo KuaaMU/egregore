@@ -290,7 +290,13 @@ async function api(path,opts={}){const r=await fetch(path,{headers:{'Content-Typ
 
 // Topics
 async function loadTopics(){try{topics=await api('/api/topics')}catch{return}
-document.getElementById('topicList').innerHTML=topics.map(t=>`<div class="topic-item ${currentTopic?.id===t.id?'active':''}" onclick="selectTopic('${t.id}')"><div class="topic-info"><div class="topic-title">${esc(t.title)}</div><div class="topic-meta">${t.providers.join(', ')}</div></div><button class="topic-menu-btn" onclick="event.stopPropagation();showCtxMenu(event,'${t.id}')" title="More">⋯</button></div>`).join('')}
+document.getElementById('topicList').innerHTML=topics.map(t=>`<div class="topic-item ${currentTopic?.id===t.id?'active':''}" onclick="selectTopic('${t.id}')"><div class="topic-info"><div class="topic-title">${esc(t.title)}</div><div class="topic-meta">${t.providers.join(', ')}</div></div><div class="topic-actions" style="display:flex;gap:2px;opacity:0;transition:opacity .15s">
+<button class="ib" onclick="event.stopPropagation();reopenTopicById('${t.id}')" title="Reopen" style="font-size:11px">↩</button>
+<button class="ib" onclick="event.stopPropagation();closeTopicById('${t.id}')" title="Close" style="font-size:11px">◻</button>
+<button class="ib" onclick="event.stopPropagation();deleteTopicById('${t.id}')" title="Delete" style="font-size:11px;color:var(--red)">✕</button>
+</div></div>`).join('')}
+// Show actions on hover
+document.querySelectorAll('.topic-item').forEach(el=>{el.addEventListener('mouseenter',()=>{el.querySelector('.topic-actions').style.opacity='1'});el.addEventListener('mouseleave',()=>{el.querySelector('.topic-actions').style.opacity='0'})})
 
 async function selectTopic(id){currentTopic=topics.find(t=>t.id===id);if(!currentTopic)return;document.getElementById('mainTitle').textContent=currentTopic.title;document.getElementById('inputArea').style.display='block';await loadResponses(id);loadTopics()}
 
@@ -298,10 +304,15 @@ async function loadResponses(id){let r;try{r=await api(`/api/topics/${id}/respon
 const a=document.getElementById('chatArea');if(!r.length){a.innerHTML='<div class="empty-state"><p>No responses yet. Send a prompt.</p></div>';return}
 turnCounter=0;let html='';for(const set of r){turnCounter++;html+=renderTurn(set.prompt,set.responses||{},turnCounter)}a.innerHTML=html;a.scrollTop=a.scrollHeight}
 
-// Context menu
-function showCtxMenu(e,id){ctxTopicId=id;const m=document.getElementById('contextMenu');m.style.left=e.clientX+'px';m.style.top=e.clientY+'px';m.classList.add('show');e.stopPropagation();setTimeout(()=>document.addEventListener('click',hideCtxMenu,{once:true}),10)}
-function hideCtxMenu(){document.getElementById('contextMenu').classList.remove('show')}
-async function ctxAction(action){hideCtxMenu();if(!ctxTopicId)return;try{if(action==='delete'){if(!confirm('Delete this topic?'))return;await api(`/api/topics/${ctxTopicId}`,{method:'DELETE'});if(currentTopic?.id===ctxTopicId){currentTopic=null;document.getElementById('mainTitle').textContent='Select a topic';document.getElementById('inputArea').style.display='none';document.getElementById('chatArea').innerHTML='<div class="empty-state"><div class="icon">⬡</div><p>Create a topic to get started</p></div>'}showToast('Deleted')}else if(action==='close'){await api(`/api/topics/${ctxTopicId}/close`,{method:'POST'});showToast('Closed')}else if(action==='reopen'){await api(`/api/topics/${ctxTopicId}/reopen`,{method:'POST'});showToast('Reopened')}}catch(e){showToast('Error: '+e.message,3000)}await loadTopics()}
+// Topic actions
+async function deleteTopicById(id){
+  if(!confirm('Delete this topic?'))return;
+  try{await api(`/api/topics/${id}`,{method:'DELETE'});
+  if(currentTopic?.id===id){currentTopic=null;document.getElementById('mainTitle').textContent='Select a topic';document.getElementById('inputArea').style.display='none';document.getElementById('chatArea').innerHTML='<div class="empty-state"><div class="icon">⬡</div><p>Create a topic to get started</p></div>'}
+  showToast('Deleted');await loadTopics()}catch(e){showToast('Error: '+e.message,3000)}
+}
+async function closeTopicById(id){try{await api(`/api/topics/${id}/close`,{method:'POST'});showToast('Closed')}catch(e){showToast('Error: '+e.message,3000)}}
+async function reopenTopicById(id){try{await api(`/api/topics/${id}/reopen`,{method:'POST'});showToast('Reopened')}catch(e){showToast('Error: '+e.message,3000)}}
 
 // Settings
 let appSettings=JSON.parse(localStorage.getItem('egregore_settings')||'{}');
