@@ -1,10 +1,6 @@
-"""CdpTransport — connects to user's Chrome via CDP.
+"""Browser Transport — sends prompts to AI platforms via browser.
 
-Uses BrowserManager for page reuse (no new tabs).
-Uses NetworkObserver for metadata extraction.
-
-Architecture:
-    CdpTransport → BrowserManager → Chrome → Platform
+Uses BrowserManager (persistent context) for silent operation.
 """
 
 from __future__ import annotations
@@ -16,25 +12,22 @@ import structlog
 from playwright.async_api import Page
 
 from egregore.providers.browser_manager import BrowserManager
-from egregore.providers.network_observer import NetworkObserver
 from egregore.providers.transport import TransportResponse, TransportType
 
 logger = structlog.get_logger()
 
 
-class CdpTransport:
-    """Transport via Chrome DevTools Protocol. Reuses pages."""
+class BrowserTransport:
+    """Transport via persistent browser context."""
 
-    def __init__(self, cdp_url: str = "http://127.0.0.1:9222") -> None:
-        self._browser_manager = BrowserManager(cdp_url)
-        self._observers: dict[str, NetworkObserver] = {}
+    def __init__(self, browser_manager: BrowserManager) -> None:
+        self._browser_manager = browser_manager
 
     @property
     def transport_type(self) -> TransportType:
         return TransportType.CDP
 
     async def connect(self, **kwargs) -> None:
-        """Connect to Chrome via CDP."""
         await self._browser_manager.connect()
 
     async def send(self, url: str, prompt: str, timeout_ms: int = 60000) -> TransportResponse:
@@ -42,13 +35,7 @@ class CdpTransport:
         start = time.monotonic()
 
         try:
-            # Get or create page (reuses existing tab)
             page = await self._browser_manager.get_page(url)
-
-            # Start network observer
-            observer = NetworkObserver(page)
-            await observer.start()
-
             old_response = await self._extract_latest_response(page)
             old_content_len = await self._get_content_length(page)
 
@@ -62,23 +49,14 @@ class CdpTransport:
             await asyncio.sleep(0.3)
             await page.keyboard.press("Enter")
 
-            # Wait for new response
+            # Wait for response
             content = await self._wait_for_response(page, timeout_ms, old_response, old_content_len)
             latency_ms = (time.monotonic() - start) * 1000
-
-            # Get metadata from network
-            meta = observer.get_meta()
-            await observer.stop()
 
             return TransportResponse(
                 content=content,
                 success=len(content) > 0,
                 latency_ms=latency_ms,
-                metadata={
-                    "conversation_id": meta.conversation_id,
-                    "model": meta.model,
-                    "token_usage": meta.token_usage,
-                },
             )
 
         except Exception as e:
@@ -90,7 +68,6 @@ class CdpTransport:
             )
 
     async def health(self, url: str) -> bool:
-        """Check if a platform is accessible."""
         try:
             page = await self._browser_manager.get_page(url)
             await page.get_by_role("textbox").first.wait_for(state="visible", timeout=5000)
@@ -99,10 +76,7 @@ class CdpTransport:
             return False
 
     async def close(self) -> None:
-        """Disconnect from Chrome."""
         await self._browser_manager.close()
-
-    # === Private ===
 
     async def _wait_for_response(self, page: Page, timeout_ms: int, old_response: str, old_content_len: int = 0) -> str:
         start = time.monotonic()
@@ -116,7 +90,6 @@ class CdpTransport:
         while (time.monotonic() - start) * 1000 < timeout_ms:
             current_text = await self._extract_latest_response(page)
 
-            # Virtual list: content grew
             if not new_response_detected and current_text == old_response and old_content_len > 0:
                 new_len = await self._get_content_length(page)
                 if new_len > old_content_len + 10:

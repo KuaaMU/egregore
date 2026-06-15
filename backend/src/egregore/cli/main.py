@@ -31,8 +31,8 @@ import json
 import sys
 from pathlib import Path
 
-from egregore.providers.bootstrap import ensure_browser
-from egregore.providers.cdp_transport import CdpTransport
+from egregore.providers.browser_manager import BrowserManager
+from egregore.providers.cdp_transport import BrowserTransport
 from egregore.synthesis.store import ResponseStore
 from egregore.topic.events import TopicEventStore
 from egregore.topic.manager import TopicManager
@@ -211,18 +211,10 @@ async def run(args: argparse.Namespace) -> None:
         store.close()
         return
 
-    # === Commands that need CDP ===
+    # === Commands that need browser ===
 
-    # Auto-start browser if needed
-    try:
-        await ensure_browser()
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        store.close()
-        return
-
-    transport = CdpTransport()
-    browser_manager = transport._browser_manager
+    browser_manager = BrowserManager()
+    transport = BrowserTransport(browser_manager)
     response_store = ResponseStore()
     manager = TopicManager(transport, store, event_store, browser_manager, response_store)
 

@@ -10,8 +10,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from egregore.providers.bootstrap import ensure_browser
-from egregore.providers.cdp_transport import CdpTransport
+from egregore.providers.browser_manager import BrowserManager
+from egregore.providers.cdp_transport import BrowserTransport
 from egregore.synthesis.store import ResponseStore
 from egregore.topic.events import TopicEventStore
 from egregore.topic.manager import TopicManager
@@ -27,20 +27,16 @@ def create_web_app() -> FastAPI:
     store = TopicStore(DB_PATH)
     event_store = TopicEventStore(store._conn)
     response_store = ResponseStore()
-    transport = CdpTransport()
-    browser_manager = transport._browser_manager
+    browser_manager = BrowserManager()
+    transport = BrowserTransport(browser_manager)
     manager = TopicManager(transport, store, event_store, browser_manager, response_store)
 
     @app.on_event("startup")
     async def startup():
         try:
-            await ensure_browser()
-        except Exception:
-            pass
-        try:
-            await transport.connect()
-        except Exception:
-            pass
+            await browser_manager.connect()
+        except Exception as e:
+            logger.warning("browser_connect_failed", error=str(e))
 
     @app.on_event("shutdown")
     async def shutdown():
@@ -101,7 +97,7 @@ def create_web_app() -> FastAPI:
             async def send_one(provider: str):
                 url = topic.get_url(provider) or PROVIDER_URLS.get(provider, "")
                 try:
-                    page = await transport._browser_manager.get_page(url)
+                    page = await browser_manager.get_page(url)
                     old_response = await transport._extract_latest_response(page)
                     old_content_len = await transport._get_content_length(page)
 
